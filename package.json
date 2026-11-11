@@ -4,7 +4,7 @@
   "description": "Syntax highlighting, IntelliSense with package-aware module resolution, snippets, xlc diagnostics, formatting and run/build/test/package commands for the xlang programming language",
   "version": "1.0.0",
   "publisher": "xlang",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/hasirciogluhq/xl-vscode.git"

@@ -192,6 +192,10 @@ fn classify(c: Color) -> i32 {
 }
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
-MIT
+Licensed under the [Apache License, Version 2.0](LICENSE).
