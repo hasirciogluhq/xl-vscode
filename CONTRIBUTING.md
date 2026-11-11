@@ -6,7 +6,7 @@ The extension is licensed under the [Apache License 2.0](LICENSE). Unless you st
 
 - The compiler (`xlc`) is the authority; the extension's parser only feeds IntelliSense. Keep `project.ts`, `toml.ts` and `parser.ts` free of `vscode` imports so `bun test` covers them.
 - A new keyword, builtin, attribute, role, diagnostic code or compiler flag means updating the grammar, `builtins.ts`, `diagnosticCodes.ts`, snippets and the README in the same change.
-- Do not bump the version in `package.json`; maintainers do that when releasing.
+- Do not change `version` in a feature or fix PR. Maintainers bump it in a dedicated release commit following [Semantic Versioning](https://semver.org), together with the `CHANGELOG.md` entry. Add your change to the `Unreleased` section of the changelog.
 
 ## Workflow
 

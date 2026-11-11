@@ -22,11 +22,21 @@
 - **Bun** + TypeScript. `bun install`, `bun run compile`, `bun run typecheck`, `bun test`, `bun run package`. `out/`, `node_modules/` and `*.vsix` are not committed.
 - Before a commit: `bun run typecheck && bun test && bun run compile`.
 
+## Versioning and releases
+- The extension follows [Semantic Versioning](https://semver.org). `version` in `package.json` is the single source of truth; a release tag is `vX.Y.Z` (or `vX.Y.Z-rc.N` for a pre-release) and must equal it.
+  - **Major**: a breaking change to settings keys, command IDs or the minimum supported `xlc` or VS Code version.
+  - **Minor**: a new feature, setting, command or language construct.
+  - **Patch**: a bug fix or an internal change with no user-visible effect.
+- A release is one commit that only bumps `version`, adds the `CHANGELOG.md` entry (Keep a Changelog format: Added / Changed / Fixed / Removed) and updates `engines.vscode` if needed. Feature commits never bump the version.
+- Releases are cut by maintainers from `main`: run `bun run typecheck && bun test && bun run package`, install the `.vsix` into a clean VS Code, then tag and publish (`vsce publish`, and `ovsx publish` for Open VSX) from the tagged commit. A tag never moves and a published version is never overwritten.
+- Local testing never needs a version change: use F5 (Extension Development Host) or install the `.vsix` produced by `bun run package`. Do not commit `.vsix` files.
+- Pre-release builds use an odd/even convention or `-rc.N` tags and are published with `vsce publish --pre-release`.
+- When asked to release, Claude prepares the release commit and the changelog entry and stops before tagging or publishing; tagging and publishing are the maintainer's step.
+
 ## Rules
 - Repo content is English (code, comments, docs, commits). User chat is Turkish.
 - Keep the extension in step with the language: a new keyword, builtin, attribute, role, diagnostic code or compiler flag means updating the grammar, `builtins.ts`, `diagnosticCodes.ts`, snippets and README here.
-- Docs of the language live in `xlang-docs/` of the main repo; this repo only has its own `README.md`.
-- Do not bump the version in `package.json` unless the user asks.
+- Docs of the language live in `xlang-docs/`; the extension's behavior is documented only in this repo's `README.md`, which must match `package.json` (commands, settings) in the same change.
 - File edits use the built-in Read/Edit/Write tools.
 - **Never add `Co-Authored-By` trailers, "Authored by Claude" or any "Generated with Claude Code" line** to commits, PRs or files in this repo.
 - Commits here are pushed first; the main repo then commits the updated submodule pointer.
