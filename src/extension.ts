@@ -181,7 +181,7 @@ async function showEnvironment(): Promise<void> {
       `std:       ${context.stdRoot ?? "(not found: set xlang.stdPath or check out xl-std)"}`,
       "module roots (-M):",
       ...(context.roots.length ? context.roots.map((r) => `  ${r.name} = ${r.dir}`) : ["  (none)"]),
-      ...(context.missing.length ? [`missing (run xlang package install): ${context.missing.join(", ")}`] : []),
+      ...(context.missing.length ? [`missing (run xl install): ${context.missing.join(", ")}`] : []),
       `xlc flags: ${args.join(" ")}`
     );
   }
@@ -229,7 +229,7 @@ async function runCurrentFile(): Promise<void> {
     void vscode.window.showWarningMessage("A *.test.xl file is a test: use xlang: Test Current File.");
     return;
   }
-  runJobs("xlang run", [buildAndRunJob(await resolveCompilerPath(), file, path.basename(file), 0)]);
+  runJobs("xl run", [buildAndRunJob(await resolveCompilerPath(), file, path.basename(file), 0)]);
 }
 
 async function buildCurrentFile(): Promise<void> {
@@ -328,7 +328,7 @@ async function runTests(files: string[]): Promise<void> {
   const compiler = await resolveCompilerPath();
   const base = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
   runJobs(
-    "xlang test",
+    "xl test",
     files.map((file, id) => buildAndRunJob(compiler, file, base ? path.relative(base, file) : file, id))
   );
 }
@@ -378,7 +378,7 @@ function packageCommand(args: string[]): void {
     void vscode.window.showWarningMessage("Open a folder first.");
     return;
   }
-  runJobs("xlang package", [{ title: `package ${args[0]}`, commands: [{ command: resolveCliPath(), args: ["package", ...args], cwd }] }], projectChangedSoon);
+  runJobs("xl package", [{ title: `package ${args[0]}`, commands: [{ command: resolveCliPath(), args, cwd }] }], projectChangedSoon);
 }
 
 /** Reloads the project after a package command finished (the watchers also catch most changes). */

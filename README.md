@@ -7,7 +7,7 @@ run / build / test / package commands.
 Built with **Bun** + TypeScript. It needs the [`xlc`](https://github.com/hasirciogluhq/xlc) compiler for
 diagnostics and the commands, and the [`xl-std`](https://github.com/hasirciogluhq/xl-std) standard library
 sources for `std` IntelliSense and builds. Packages are managed by the `xlang` tool
-(`xlang package ...`); the extension reads what it writes.
+(`xl install|update|remove|list|clean`); the extension reads what it writes.
 
 ## How it talks to the compiler
 
@@ -97,7 +97,7 @@ Problems found in an imported file are shown on the first line of the importing 
 | **xlang: Show Type Layouts / Show LLVM IR / Show HIR** | Compiler dumps of the active file |
 | **xlang: Explain Diagnostic Code** | `xlc --explain <CODE>` |
 | **xlang: Show Compiler, Std and Module Roots** | The compiler, std and `-M` roots in use |
-| **xlang: Package Install / Update / Remove / List / Clean** | `xlang package ...` in the project directory |
+| **xlang: Package Install / Update / Remove / List / Clean** | `xl install|update|remove|list|clean` in the project directory |
 | **xlang: Format Document** | Built-in brace based formatter |
 
 The status bar shows the `xlc` version in use; click it for the module roots.

@@ -138,7 +138,7 @@ export const ATTRIBUTES: CatalogEntry[] = [
   attr("entry", "@entry", "Marks the program's entry function, at most one (`E0753`): `@entry fn main() -> i32` or `@entry fn main(argc: i32, argv: **u8) -> i32`. The compiler generates the process start-up (`_start`, `mainCRTStartup`) from it."),
   attr("init", "@init", "Module-level boot function: `@init fn boot() { }`. Runs before `@entry`: library group first, then the program; a module's imports run before the module."),
   attr("fini", "@fini", "Module-level teardown function with the same form as `@init`; runs after `@entry`, in reverse `@init` order."),
-  attr("repr", "@repr(c)", "Gives a struct or class the C layout instead of the default xlang layout.", "repr(c)"),
+  attr("repr", "@repr(c)", "Gives a struct or class the C layout instead of the default xl layout.", "repr(c)"),
   attr("packed", "@packed", "Removes padding between fields."),
   attr("align", "@align(n)", "Sets the alignment of a type or field.", "align(${1:16})"),
   attr("layout", "@layout(...)", "Selects a frozen layout scheme version.", "layout(${1})"),

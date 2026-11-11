@@ -77,7 +77,7 @@
         "xlang.cliPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the xlang tool that runs the package commands (xlang package install|update|remove|list|clean). Empty = xlang on PATH."
+          "description": "Path to the xl tool that runs the package commands (xl install|update|remove|list|clean). Empty = xl on PATH."
         },
         "xlang.stdPath": {
           "type": "string",

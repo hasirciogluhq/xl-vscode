@@ -90,5 +90,5 @@ export const DIAGNOSTIC_CODES: Record<string, CodeInfo> = {
   W0701: w("missing return"),
 };
 
-/** Codes that mean a package is missing: the editor offers `xlang package install` for them. */
+/** Codes that mean a package is missing: the editor offers `xl install` for them. */
 export const PACKAGE_CODES = new Set(["E0741", "E0745"]);

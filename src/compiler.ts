@@ -61,7 +61,7 @@ export async function resolveCompilerPath(): Promise<string> {
 
 /** The `xlang` tool (packages, self-update): `xlang.cliPath`, else `xlang` on `PATH`. */
 export function resolveCliPath(): string {
-  return settings().get<string>("cliPath", "").trim() || "xlang";
+  return settings().get<string>("cliPath", "").trim() || "xl";
 }
 
 export interface BuildArgs {
