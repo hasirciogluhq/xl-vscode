@@ -10,7 +10,7 @@
 - Type-check is `--check`; diagnostics for the editor are `--diag-format json --context 0` (one JSON object per line on stderr: `code`, `severity` error|warning, `suppressed`, `message`, `labels[]`, `notes[]`, `detail`, `reason`, `fix`).
 - Libraries are connected with `-M NAME=DIR` (`import "NAME"` and `"NAME/sub"` resolve inside DIR) and `--import SPEC`. The stdlib is `-M std=<xl-std dir> --import std`; features are plain definitions (`-DfeatureDefaultAllocator=true`). A package is `-M github.com/user/repo=<project>/.xlang/cache/<repo>@<tag>`.
 - The `xlang` tool (outside this repo) reads `xlang.toml`/`xlang.lock`/`.xlang/cache` and builds those flags. `project.ts` + `paths.ts` do the same reading for the editor; keep them in step with `xlang-docs` (packages page). `run` and `test` are orchestrated by `runner.ts` (build to a temp executable, run it).
-- Source of truth for the language: the `xlc` sources (`xlc/src/lang/lexer`, `xlc/src/util/diagnostics.cpp` for the code table, `xlc/src/cli/main.cpp` for flags) and `xlang-docs/`. Primitive types are `u8..u64` (not `ui8`); `str`, slices `[]T`/`[]mut T`, tuples, `const`, `try/catch`, `delete`, payload enums are language features.
+- Source of truth for the language: the `xlc` sources (`xlc/src/lang/lexer`, `xlc/src/util/diagnostics.cpp` for the code table, `xlc/src/cli/main.cpp` for flags) and `xlang-docs/`. Primitive types are `i8..i64` and `u8..u64`; `str`, slices `[]T`/`[]mut T`, tuples, `const`, `try/catch`, `delete`, payload enums are language features.
 
 ## Layout
 - `src/extension.ts` activation, commands, watchers, status bar, quick fixes; `compiler.ts` xlc discovery and flag building; `runner.ts` run/test terminal; `diagnostics.ts` compiler runner and JSON mapping.
