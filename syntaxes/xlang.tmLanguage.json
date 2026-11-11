@@ -5,6 +5,8 @@
   "patterns": [
     { "include": "#comments" },
     { "include": "#strings" },
+    { "include": "#byte-literals" },
+    { "include": "#labels" },
     { "include": "#directives" },
     { "include": "#attributes" },
     { "include": "#declarations" },
@@ -27,6 +29,38 @@
         {
           "name": "comment.line.double-slash.xlang",
           "match": "//.*$"
+        },
+        {
+          "name": "comment.block.xlang",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "byte-literals": {
+      "patterns": [
+        {
+          "name": "constant.character.byte.xlang",
+          "match": "(?<![A-Za-z0-9_])b'(?:\\\\(?:x[0-9A-Fa-f]{2}|[nrt0\\\\'\"])|[^'\\\\])'"
+        }
+      ]
+    },
+    "labels": {
+      "patterns": [
+        {
+          "name": "meta.label.xlang",
+          "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)(?=\\s*(?:for|while|do)\\b)",
+          "captures": {
+            "1": { "name": "entity.name.label.xlang" },
+            "2": { "name": "punctuation.separator.label.xlang" }
+          }
+        },
+        {
+          "match": "\\b(break|continue)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.flow.xlang" },
+            "2": { "name": "entity.name.label.xlang" }
+          }
         }
       ]
     },
@@ -68,7 +102,7 @@
       "patterns": [
         {
           "name": "meta.attribute.xlang",
-          "match": "(@)(file|repr|packed|layout|align|mangle|allow|library|[A-Za-z_][A-Za-z0-9_]*)\\b",
+          "match": "(@)(entry|init|fini|file|repr|packed|layout|align|mangle|allow|library|[A-Za-z_][A-Za-z0-9_]*)\\b",
           "captures": {
             "1": { "name": "punctuation.definition.attribute.xlang" },
             "2": { "name": "entity.other.attribute-name.xlang" }
@@ -84,6 +118,13 @@
           "captures": {
             "1": { "name": "storage.type.function.xlang" },
             "2": { "name": "entity.name.function.xlang" }
+          }
+        },
+        {
+          "name": "meta.function.literal.xlang",
+          "match": "\\b(fn)(?=\\s*\\()",
+          "captures": {
+            "1": { "name": "storage.type.function.xlang" }
           }
         },
         {
@@ -155,11 +196,27 @@
           }
         },
         {
+          "name": "meta.const.xlang",
+          "match": "\\b(const)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.const.xlang" },
+            "2": { "name": "variable.other.constant.xlang" }
+          }
+        },
+        {
           "name": "meta.local.xlang",
           "match": "\\b(local)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "storage.type.local.xlang" },
             "2": { "name": "variable.other.local.xlang" }
+          }
+        },
+        {
+          "name": "meta.local.tuple.xlang",
+          "match": "\\b(local)\\s*\\(([^)]*)\\)",
+          "captures": {
+            "1": { "name": "storage.type.local.xlang" },
+            "2": { "patterns": [{ "match": "[A-Za-z_][A-Za-z0-9_]*", "name": "variable.other.local.xlang" }] }
           }
         },
         {
@@ -184,11 +241,18 @@
         },
         {
           "name": "meta.import-from.xlang",
-          "match": "\\b(from)\\s+(\"[^\"]*\")\\s+(import)\\b",
+          "match": "\\b(from)\\s+(\"[^\"]*\")",
           "captures": {
             "1": { "name": "keyword.control.import.xlang" },
-            "2": { "name": "string.quoted.double.module.xlang" },
-            "3": { "name": "keyword.control.import.xlang" }
+            "2": { "name": "string.quoted.double.module.xlang" }
+          }
+        },
+        {
+          "name": "meta.import-module.xlang",
+          "match": "\\b(import)\\s+(\"[^\"]*\")",
+          "captures": {
+            "1": { "name": "keyword.control.import.xlang" },
+            "2": { "name": "string.quoted.double.module.xlang" }
           }
         },
         {
@@ -216,7 +280,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.xlang",
-          "match": "\\b(syscall|sizeOf|alignOf|offsetOf|staticAssert|__builtin_atomicLoad|__builtin_atomicStore|__builtin_atomicXchg|__builtin_atomicCas|__builtin_atomicAdd|__builtin_fence|__builtin_asm)\\b(?=\\s*\\()"
+          "match": "\\b(syscall|sizeOf|alignOf|offsetOf|staticAssert|__builtin_[A-Za-z0-9]+)\\b(?=\\s*[(<])"
         },
         {
           "name": "support.function.asm-operand.xlang",
@@ -231,6 +295,17 @@
     "keywords": {
       "patterns": [
         {
+          "name": "meta.for-each.xlang",
+          "match": "\\b(for)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(,)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s+(in)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.flow.xlang" },
+            "2": { "name": "variable.other.local.xlang" },
+            "3": { "name": "punctuation.separator.comma.xlang" },
+            "4": { "name": "variable.other.local.xlang" },
+            "5": { "name": "keyword.control.range.xlang" }
+          }
+        },
+        {
           "name": "meta.for-range.xlang",
           "match": "\\b(for)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(in)\\b",
           "captures": {
@@ -241,7 +316,7 @@
         },
         {
           "name": "keyword.control.flow.xlang",
-          "match": "\\b(if|else|while|do|for|break|continue|return|switch|case|default|defer)\\b"
+          "match": "\\b(if|else|while|do|for|in|break|continue|return|switch|case|default|defer|try|catch)\\b"
         },
         {
           "name": "keyword.other.unsafe.xlang",
@@ -249,11 +324,11 @@
         },
         {
           "name": "storage.modifier.xlang",
-          "match": "\\b(export|declare|virtual|override|except)\\b"
+          "match": "\\b(export|declare|virtual|override|except|mut)\\b"
         },
         {
           "name": "keyword.other.new.xlang",
-          "match": "\\bnew\\b"
+          "match": "\\b(new|delete)\\b"
         },
         {
           "name": "variable.language.self.xlang",
@@ -269,7 +344,7 @@
       "patterns": [
         {
           "name": "storage.type.primitive.xlang",
-          "match": "\\b(i8|i16|i32|i64|isize|ui8|ui16|ui32|ui64|usize|f32|f64|bool|void)\\b"
+          "match": "\\b(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize|f32|f64|bool|void|str)\\b"
         },
         {
           "name": "entity.name.type.xlang",
@@ -336,7 +411,11 @@
         },
         {
           "name": "keyword.operator.range.xlang",
-          "match": "\\.\\."
+          "match": "\\.\\.=?"
+        },
+        {
+          "name": "keyword.operator.assignment.infer.xlang",
+          "match": ":="
         },
         {
           "name": "keyword.operator.logical.xlang",

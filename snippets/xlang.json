@@ -1,72 +1,98 @@
 {
   "Function": {
     "prefix": "fn",
-    "body": [
-      "fn ${1:name}(${2}) ${3:-> i32 }{",
-      "\t$0",
-      "}"
-    ],
+    "body": ["fn ${1:name}(${2}) ${3:-> i32 }{", "\t$0", "}"],
     "description": "Function"
+  },
+  "Generic function": {
+    "prefix": "fng",
+    "body": ["fn ${1:name}<${2:T}>(${3:a}: ${2:T}) -> ${2:T} {", "\t$0", "}"],
+    "description": "Generic function (monomorphized per use)"
   },
   "Exported function": {
     "prefix": "exportfn",
-    "body": [
-      "export fn ${1:name}(${2}) ${3:-> i32 }{",
-      "\t$0",
-      "}"
-    ],
+    "body": ["export fn ${1:name}(${2}) ${3:-> i32 }{", "\t$0", "}"],
     "description": "Function visible to other modules"
   },
   "C-exported function": {
     "prefix": "exportc",
-    "body": [
-      "export(c) fn ${1:name}(${2}) ${3:-> i32 }{",
-      "\t$0",
-      "}"
-    ],
+    "body": ["export(c) fn ${1:name}(${2}) ${3:-> i32 }{", "\t$0", "}"],
     "description": "Function with an unmangled C symbol"
   },
-  "Main": {
-    "prefix": "main",
+  "Variadic function": {
+    "prefix": "fnpack",
     "body": [
-      "fn main() -> i32 {",
-      "\t$0",
-      "\treturn 0",
+      "fn ${1:name}(..${2:args}) {",
+      "\tfor a in ${2:args} {",
+      "\t\t$0",
+      "\t}",
       "}"
     ],
-    "description": "Program entry point"
+    "description": "Parameter pack: one instance per argument list, unrolled `for`"
+  },
+  "Function literal": {
+    "prefix": "fnlit",
+    "body": ["fn(${1:c}: ${2:*Context}) {", "\t$0", "}"],
+    "description": "Anonymous function value"
+  },
+  "Entry point": {
+    "prefix": "main",
+    "body": ["@entry fn main() -> i32 {", "\t$0", "\treturn 0", "}"],
+    "description": "Program entry point (@entry)"
+  },
+  "Entry point with arguments": {
+    "prefix": "mainargs",
+    "body": ["@entry fn main(argc: i32, argv: **u8) -> i32 {", "\t$0", "\treturn 0", "}"],
+    "description": "Entry point that receives argc and argv (Linux and macOS executables)"
+  },
+  "Init function": {
+    "prefix": "init",
+    "body": ["@init fn ${1:boot}() {", "\t$0", "}"],
+    "description": "Module-level boot function run before @entry"
+  },
+  "Fini function": {
+    "prefix": "fini",
+    "body": ["@fini fn ${1:shutdown}() {", "\t$0", "}"],
+    "description": "Module-level teardown function run after @entry"
   },
   "Local": {
     "prefix": "local",
-    "body": [
-      "local ${1:name}: ${2:i32} = ${3:0}"
-    ],
+    "body": ["local ${1:name}: ${2:i32} = ${3:0}"],
     "description": "Local variable"
+  },
+  "Local (inferred)": {
+    "prefix": "locali",
+    "body": ["local ${1:name} := ${2:value}"],
+    "description": "Local variable, type taken from the initializer"
+  },
+  "Tuple destructuring": {
+    "prefix": "tuple",
+    "body": ["local (${1:q}, ${2:r}) = ${3:divMod}(${4:7}, ${5:3})"],
+    "description": "Take a returned tuple apart"
+  },
+  "Const": {
+    "prefix": "const",
+    "body": ["const ${1:NAME}: ${2:i32} = ${3:0}"],
+    "description": "Named compile-time constant (read-only data)"
   },
   "Global": {
     "prefix": "global",
-    "body": [
-      "global ${1:name}: ${2:i32} = ${3:0}"
-    ],
+    "body": ["global ${1:name}: ${2:i32} = ${3:0}"],
     "description": "Global variable (constant initializer)"
   },
   "Struct": {
     "prefix": "struct",
-    "body": [
-      "struct ${1:Name} {",
-      "\t${2:field}: ${3:i32}",
-      "}"
-    ],
-    "description": "Struct"
+    "body": ["struct ${1:Name} {", "\t${2:field}: ${3:i32}", "}"],
+    "description": "Struct (plain data)"
+  },
+  "Generic struct": {
+    "prefix": "structg",
+    "body": ["struct ${1:Pair}<${2:T}> {", "\t${3:a}: ${2:T}", "\t${4:b}: ${2:T}", "}"],
+    "description": "Generic struct"
   },
   "C-layout struct": {
     "prefix": "structc",
-    "body": [
-      "@repr(c)",
-      "struct ${1:Name} {",
-      "\t${2:field}: ${3:i32}",
-      "}"
-    ],
+    "body": ["@repr(c)", "struct ${1:Name} {", "\t${2:field}: ${3:i32}", "}"],
     "description": "Struct with C layout"
   },
   "Class": {
@@ -75,12 +101,27 @@
       "class ${1:Name} {",
       "\t${2:field}: ${3:i32}",
       "",
-      "\tfn ${4:method}(self) -> ${5:i32} {",
+      "\tfn init(self, ${4:value}: ${3:i32}) {",
+      "\t\tself.${2:field} = ${4:value}",
+      "\t}",
+      "",
+      "\tfn ${5:method}(self) -> ${6:i32} {",
       "\t\t$0",
       "\t}",
       "}"
     ],
-    "description": "Class"
+    "description": "Class with a constructor"
+  },
+  "Class with destructor": {
+    "prefix": "classdrop",
+    "body": [
+      "class ${1:Name} {",
+      "\tfn drop(self) {",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Class with a drop method (move-only, dropped at the end of its block)"
   },
   "Derived class": {
     "prefix": "classd",
@@ -95,11 +136,7 @@
   },
   "Interface": {
     "prefix": "interface",
-    "body": [
-      "interface ${1:Name} {",
-      "\tfn ${2:method}(self) -> ${3:i32}",
-      "}"
-    ],
+    "body": ["interface ${1:Name} {", "\tfn ${2:method}(self) -> ${3:i32}", "}"],
     "description": "Interface"
   },
   "Impl": {
@@ -115,254 +152,232 @@
   },
   "Enum": {
     "prefix": "enum",
+    "body": ["enum ${1:Name}: ${2:i32} {", "\t${3:A},", "\t${4:B}", "}"],
+    "description": "Value enum"
+  },
+  "Payload enum": {
+    "prefix": "enump",
     "body": [
-      "enum ${1:Name}: ${2:i32} {",
-      "\t${3:A},",
-      "\t${4:B}",
+      "enum ${1:Expr} {",
+      "\t${2:Num}(${3:i64})",
+      "\t${4:Add}(*${1:Expr}, *${1:Expr})",
+      "\t${5:Nil}",
       "}"
     ],
-    "description": "Enum"
+    "description": "Payload enum (tagged union)"
   },
-  "Type alias": {
-    "prefix": "typealias",
-    "body": [
-      "export type ${1:Name} = ${2:i32}"
-    ],
-    "description": "Transparent type alias"
+  "Generic payload enum": {
+    "prefix": "enumg",
+    "body": ["enum ${1:Result}<${2:T}, ${3:E}> {", "\t${4:Ok}(${2:T})", "\t${5:Err}(${3:E})", "}"],
+    "description": "Generic payload enum"
   },
-  "Define constant": {
-    "prefix": "define",
-    "body": [
-      "define ${1:NAME} = ${2:0}"
-    ],
-    "description": "Compile-time constant"
-  },
-  "Define macro": {
-    "prefix": "definem",
-    "body": [
-      "define ${1:name}(${2:x}: expr) {",
-      "\t$0",
-      "}"
-    ],
-    "description": "Hygienic macro"
-  },
-  "If": {
-    "prefix": "if",
-    "body": [
-      "if ${1:condition} {",
-      "\t$0",
-      "}"
-    ],
-    "description": "If"
-  },
-  "If else": {
-    "prefix": "ifelse",
-    "body": [
-      "if ${1:condition} {",
-      "\t$2",
-      "} else {",
-      "\t$0",
-      "}"
-    ],
-    "description": "If / else"
-  },
-  "While": {
-    "prefix": "while",
-    "body": [
-      "while ${1:condition} {",
-      "\t$0",
-      "}"
-    ],
-    "description": "While loop"
-  },
-  "Do while": {
-    "prefix": "do",
-    "body": [
-      "do {",
-      "\t$0",
-      "} while ${1:condition}"
-    ],
-    "description": "Do-while loop"
-  },
-  "For": {
-    "prefix": "for",
-    "body": [
-      "for local ${1:i}: ${2:i32} = 0; ${1:i} < ${3:n}; ${1:i}++ {",
-      "\t$0",
-      "}"
-    ],
-    "description": "C-style for loop"
-  },
-  "For range": {
-    "prefix": "forin",
-    "body": [
-      "for ${1:i} in ${2:0}..${3:n} {",
-      "\t$0",
-      "}"
-    ],
-    "description": "Range loop (upper bound exclusive)"
-  },
-  "Labeled loop": {
-    "prefix": "label",
-    "body": [
-      "${1:outer}: while ${2:condition} {",
-      "\t$0",
-      "}"
-    ],
-    "description": "Labeled loop (break / continue take the label)"
-  },
-  "Switch": {
-    "prefix": "switch",
+  "Switch on a payload enum": {
+    "prefix": "switchp",
     "body": [
       "switch ${1:value} {",
-      "\tcase ${2:0} {",
-      "\t\t$3",
+      "\tcase ${2:Expr}.${3:Num}(${4:n}) {",
+      "\t\t$5",
       "\t}",
-      "\tdefault {",
+      "\tcase ${2:Expr}.${6:Nil} {",
       "\t\t$0",
       "\t}",
       "}"
     ],
+    "description": "Match the variants of a payload enum and bind their values"
+  },
+  "Type alias": {
+    "prefix": "typealias",
+    "body": ["export type ${1:Name} = ${2:i32}"],
+    "description": "Transparent type alias"
+  },
+  "Define constant": {
+    "prefix": "define",
+    "body": ["define ${1:NAME} = ${2:0}"],
+    "description": "Compile-time constant"
+  },
+  "Define macro": {
+    "prefix": "definem",
+    "body": ["define ${1:name}(${2:x}: expr) {", "\t$0", "}"],
+    "description": "Hygienic macro (called as name!(...))"
+  },
+  "If": {
+    "prefix": "if",
+    "body": ["if ${1:condition} {", "\t$0", "}"],
+    "description": "If"
+  },
+  "If else": {
+    "prefix": "ifelse",
+    "body": ["if ${1:condition} {", "\t$2", "} else {", "\t$0", "}"],
+    "description": "If / else"
+  },
+  "While": {
+    "prefix": "while",
+    "body": ["while ${1:condition} {", "\t$0", "}"],
+    "description": "While loop"
+  },
+  "Do while": {
+    "prefix": "do",
+    "body": ["do {", "\t$0", "} while ${1:condition}"],
+    "description": "Do-while loop"
+  },
+  "For": {
+    "prefix": "for",
+    "body": ["for local ${1:i} := 0; ${1:i} < ${2:n}; ${1:i}++ {", "\t$0", "}"],
+    "description": "C-style for loop"
+  },
+  "For range": {
+    "prefix": "forin",
+    "body": ["for ${1:i} in ${2:0}..${3:n} {", "\t$0", "}"],
+    "description": "Range loop (upper bound exclusive; ..= includes it)"
+  },
+  "For each": {
+    "prefix": "foreach",
+    "body": ["for ${1:x}, ${2:i} in ${3:items} {", "\t$0", "}"],
+    "description": "Iterate an array, slice or str: x points into the storage, i is the usize index"
+  },
+  "Labeled loop": {
+    "prefix": "label",
+    "body": ["${1:outer}: for ${2:i} in ${3:0}..${4:n} {", "\t$0", "}"],
+    "description": "Labeled loop (break / continue take the label)"
+  },
+  "Switch": {
+    "prefix": "switch",
+    "body": ["switch ${1:value} {", "\tcase ${2:0} {", "\t\t$3", "\t}", "\tdefault {", "\t\t$0", "\t}", "}"],
     "description": "Switch (no fallthrough)"
   },
   "Defer": {
     "prefix": "defer",
-    "body": [
-      "defer ${1:cleanup()}"
-    ],
+    "body": ["defer ${1:cleanup()}"],
     "description": "Run a statement when the enclosing block is left"
+  },
+  "Try / catch": {
+    "prefix": "try",
+    "body": ["try {", "\t$1", "} catch ${2:e} {", "\t$0", "}"],
+    "description": "Catch a panic raised at any call depth (needs the unwind role)"
   },
   "Unsafe": {
     "prefix": "unsafe",
-    "body": [
-      "unsafe {",
-      "\t$0",
-      "}"
-    ],
+    "body": ["unsafe {", "\t$0", "}"],
     "description": "Allow implicit signedness-changing conversions"
   },
   "Ternary": {
     "prefix": "tern",
-    "body": [
-      "${1:cond} ? ${2:a} : ${3:b}"
-    ],
+    "body": ["${1:cond} ? ${2:a} : ${3:b}"],
     "description": "Conditional expression"
   },
   "New": {
     "prefix": "new",
-    "body": [
-      "new ${1:Type} { ${2:field}: ${3:value} }"
-    ],
-    "description": "Allocate through the registered allocator"
+    "body": ["local ${1:p} := new ${2:Type}(${3})"],
+    "description": "Allocate through the registered alloc function"
   },
-  "New with allocator": {
-    "prefix": "newa",
-    "body": [
-      "new(${1:allocator}) ${2:Type} { ${3:field}: ${4:value} }"
-    ],
-    "description": "Allocate through an explicit allocator"
+  "New in place": {
+    "prefix": "newp",
+    "body": ["new(${1:ptr}) ${2:Type}(${3})"],
+    "description": "Construct in memory you already have (allocates nothing)"
+  },
+  "Delete": {
+    "prefix": "delete",
+    "body": ["delete ${1:p}"],
+    "description": "Drop the pointee, then free through the registered free function"
   },
   "Import from": {
     "prefix": "from",
-    "body": [
-      "from \"${1:std}\" import ${2:name}"
-    ],
-    "description": "Import names from a module"
+    "body": ["from \"${1:std}\" import ${2:name}"],
+    "description": "Import names from a module or package"
+  },
+  "Import module": {
+    "prefix": "import",
+    "body": ["import \"${1:std/mem}\" as ${2:mem}"],
+    "description": "Import a module as a namespace"
   },
   "Import all": {
     "prefix": "importall",
-    "body": [
-      "import * from \"${1:module}\""
-    ],
+    "body": ["import * from \"${1:module}\""],
     "description": "Import every export of a module"
   },
   "Import namespace": {
     "prefix": "importas",
-    "body": [
-      "import * as ${1:alias} from \"${2:module}\""
-    ],
+    "body": ["import * as ${1:alias} from \"${2:module}\""],
     "description": "Import a module under a namespace"
+  },
+  "Import package": {
+    "prefix": "importpkg",
+    "body": ["from \"${1:github.com/user/repo}\" import ${2:name}"],
+    "description": "Import from an installed package (repository path)"
   },
   "Re-export": {
     "prefix": "exportfrom",
-    "body": [
-      "export * from \"${1:module}\""
-    ],
+    "body": ["export * from \"${1:module}\""],
     "description": "Re-export a module"
   },
   "Declare function": {
     "prefix": "declare",
-    "body": [
-      "declare fn ${1:name}(${2}) ${3:-> i32}"
-    ],
+    "body": ["declare fn ${1:name}(${2}) ${3:-> i32}"],
     "description": "Function defined in another object or library"
   },
   "Library import": {
     "prefix": "library",
-    "body": [
-      "@library(\"${1:ntdll}\")",
-      "declare fn ${2:name}(${3}) ${4:-> i32}"
-    ],
-    "description": "Function imported from a native OS library"
+    "body": ["@library(\"${1:System}\")", "declare fn ${2:name}(${3}) ${4:-> i32}"],
+    "description": "Function imported from an OS runtime library (stdlib only)"
   },
   "Register panic": {
     "prefix": "registerpanic",
-    "body": [
-      "register(panic) fn ${1:panic}(msg: *ui8) {",
-      "\t$0",
-      "}"
-    ],
+    "body": ["register(panic) fn ${1:panic}(msg: *u8) {", "\t$0", "}"],
     "description": "Bind the panic role"
   },
-  "Register allocator": {
+  "Register alloc and free": {
     "prefix": "registeralloc",
     "body": [
-      "register(allocator) global ${1:currentAllocator}: ${2:Allocator}"
+      "register(alloc) fn ${1:alloc}(size: usize, align: usize) -> *void {",
+      "\t$0",
+      "}",
+      "",
+      "register(free) fn ${2:free}(p: *void) {",
+      "}"
     ],
-    "description": "Bind the allocator role"
+    "description": "Bind the alloc and free roles (register both)"
   },
   "Conditional compilation": {
     "prefix": "#if",
+    "body": ["#if ${1:os == \"linux\"}", "$0", "#endif"],
+    "description": "Conditional compilation block"
+  },
+  "Conditional compilation with else": {
+    "prefix": "#ifelse",
     "body": [
       "#if ${1:os == \"linux\"}",
-      "$0",
+      "$2",
+      "#elif ${3:os == \"macos\"}",
+      "$4",
+      "#else",
+      "#error \"${5:unsupported target}\"",
       "#endif"
     ],
-    "description": "Conditional compilation block"
+    "description": "Per-OS code with a compile-time error for other targets"
   },
   "Static assert": {
     "prefix": "staticassert",
-    "body": [
-      "staticAssert(${1:sizeOf(T) == 8}, \"${2:message}\")"
-    ],
+    "body": ["staticAssert(${1:sizeOf(T) == 8}, \"${2:message}\")"],
     "description": "Compile-time assertion"
   },
   "Syscall": {
     "prefix": "syscall",
-    "body": [
-      "syscall(${1:nr}, ${2:args})"
-    ],
+    "body": ["syscall(${1:nr}, ${2:args})"],
     "description": "Raw system call (returns i64, -errno on error)"
   },
   "Atomic load": {
     "prefix": "atomicload",
-    "body": [
-      "__builtin_atomicLoad(${1:ptr}, MemoryOrder.${2:seqCst})"
-    ],
+    "body": ["__builtin_atomicLoad(${1:ptr}, MemoryOrder.${2:seqCst})"],
     "description": "Atomic load"
   },
   "Atomic store": {
     "prefix": "atomicstore",
-    "body": [
-      "__builtin_atomicStore(${1:ptr}, ${2:value}, MemoryOrder.${3:seqCst})"
-    ],
+    "body": ["__builtin_atomicStore(${1:ptr}, ${2:value}, MemoryOrder.${3:seqCst})"],
     "description": "Atomic store"
   },
   "Inline asm": {
     "prefix": "asm",
-    "body": [
-      "__builtin_asm(\"${1:nop}\", options(\"nomem\"))"
-    ],
+    "body": ["__builtin_asm(\"${1:nop}\", options(\"nomem\"))"],
     "description": "Inline assembly (template is target specific)"
   },
   "Test file": {
@@ -374,7 +389,7 @@
       "\texpectEq(t, ${2:1 + 1}, ${3:2})",
       "}",
       "",
-      "fn main() -> i32 {",
+      "@entry fn main() -> i32 {",
       "\tlocal s: Suite",
       "\tsuiteInit(&s)",
       "\ttest(&s, \"${4:works}\", ${1:works})",
@@ -385,11 +400,7 @@
   },
   "Test case": {
     "prefix": "testcase",
-    "body": [
-      "fn ${1:name}(t: *T) {",
-      "\t$0",
-      "}"
-    ],
+    "body": ["fn ${1:name}(t: *T) {", "\t$0", "}"],
     "description": "std/testing test body"
   },
   "Gin engine": {

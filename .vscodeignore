@@ -2,6 +2,8 @@
 .vscode-test/**
 scripts/**
 src/**
+test/**
+CLAUDE.md
 .gitignore
 bunfig.toml
 tsconfig.json

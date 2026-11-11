@@ -1,17 +1,17 @@
 {
   "name": "xlang",
   "displayName": "xlang",
-  "description": "Syntax highlighting, IntelliSense, snippets, compiler diagnostics, formatting and run/build/test commands for the xlang programming language",
+  "description": "Syntax highlighting, IntelliSense with package-aware module resolution, snippets, xlc diagnostics, formatting and run/build/test/package commands for the xlang programming language",
   "version": "1.0.0",
   "publisher": "xlang",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hasirciogluhq/xlang.git"
+    "url": "https://github.com/hasirciogluhq/xl-vscode.git"
   },
-  "homepage": "https://github.com/hasirciogluhq/xlang#readme",
+  "homepage": "https://github.com/hasirciogluhq/xl-vscode#readme",
   "bugs": {
-    "url": "https://github.com/hasirciogluhq/xlang/issues"
+    "url": "https://github.com/hasirciogluhq/xl-vscode/issues"
   },
   "packageManager": "bun@1.3.14",
   "engines": {
@@ -24,12 +24,15 @@
   ],
   "keywords": [
     "xlang",
+    "xlc",
     "intellisense",
     "completion",
-    "hover"
+    "hover",
+    "packages"
   ],
   "activationEvents": [
-    "onLanguage:xlang"
+    "onLanguage:xlang",
+    "workspaceContains:**/xlang.toml"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -69,17 +72,33 @@
         "xlang.compilerPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the xlang compiler binary (outputs/xlang). Empty = auto-detect (workspace outputs/, then PATH)."
+          "description": "Path to the xlc compiler binary. Empty = auto-detect: a build in the workspace (build/<plat>/<arch>/release/xlc, also inside an xlc/ submodule), ~/.local/bin/xlc, then xlc on PATH."
+        },
+        "xlang.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the xlang tool that runs the package commands (xlang package install|update|remove|list|clean). Empty = xlang on PATH."
         },
         "xlang.stdPath": {
           "type": "string",
           "default": "",
-          "description": "Directory of the standard library sources (the one holding index.xl) used for IntelliSense. Empty = auto-detect (std/ in the workspace or next to the compiler)."
+          "description": "Directory of the standard library sources (the one holding index.xl), passed to xlc as -M std=<dir> and used for IntelliSense. Empty = [std] of xlang.toml, then an xl-std/ checkout above the file, in the workspace or above the compiler, then ~/.xlang/std."
+        },
+        "xlang.noStd": {
+          "type": "boolean",
+          "default": false,
+          "description": "Do not load the standard library: xlc gets no -M std=<dir> and no --import std."
+        },
+        "xlang.features": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["DefaultAllocator"],
+          "description": "Standard library features, passed as -DfeatureNAME=true (DefaultAllocator becomes -DfeatureDefaultAllocator=true)."
         },
         "xlang.enableDiagnostics": {
           "type": "boolean",
           "default": true,
-          "description": "Run `xlang check` on open/save and show its errors and warnings."
+          "description": "Run xlc --check on open/save and show its errors and warnings."
         },
         "xlang.diagnosticsOnType": {
           "type": "boolean",
@@ -90,12 +109,30 @@
           "type": "array",
           "items": { "type": "string" },
           "default": [],
-          "description": "Extra -D NAME or NAME=VALUE flags passed to the compiler for diagnostics, run and build."
+          "description": "Extra NAME or NAME=VALUE definitions passed to xlc as -D for diagnostics, run, build and test."
         },
         "xlang.target": {
           "type": "string",
           "default": "",
-          "description": "Value of --target passed to the compiler for diagnostics and build (empty = host)."
+          "description": "Value of --target passed to xlc (empty = host), for example aarch64-apple-darwin."
+        },
+        "xlang.safety": {
+          "type": "string",
+          "enum": ["", "checked", "unchecked"],
+          "default": "",
+          "description": "Value of --safety passed to xlc (empty = the compiler default, checked)."
+        },
+        "xlang.optLevel": {
+          "type": "string",
+          "enum": ["", "0", "1", "2", "3"],
+          "default": "",
+          "description": "Optimization level passed to xlc as -O (empty = the compiler default)."
+        },
+        "xlang.extraArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Further xlc arguments appended to every compiler call, for example [\"--cpu\", \"native\", \"-Wno-W0601\"]."
         },
         "xlang.formatter.tabSize": {
           "type": "number",
@@ -107,43 +144,41 @@
         "xlang.testRoot": {
           "type": "string",
           "default": "test",
-          "description": "Directory (or pattern) given to `xlang test` for the suite command, relative to the workspace root."
+          "description": "Directory searched for *.test.xl files by the suite command, relative to the workspace folder (the whole folder when it does not exist)."
         }
       }
     },
     "commands": [
-      {
-        "command": "xlang.runFile",
-        "title": "xlang: Run Current File",
-        "icon": "$(play)"
-      },
-      {
-        "command": "xlang.buildFile",
-        "title": "xlang: Build Current File"
-      },
-      {
-        "command": "xlang.testFile",
-        "title": "xlang: Test Current File",
-        "icon": "$(beaker)"
-      },
-      {
-        "command": "xlang.testSuite",
-        "title": "xlang: Run Test Suite"
-      },
-      {
-        "command": "xlang.formatDocument",
-        "title": "xlang: Format Document"
-      },
-      {
-        "command": "xlang.checkFile",
-        "title": "xlang: Check Current File"
-      },
-      {
-        "command": "xlang.explain",
-        "title": "xlang: Explain Diagnostic Code"
-      }
+      { "command": "xlang.runFile", "title": "xlang: Run Current File", "icon": "$(play)" },
+      { "command": "xlang.buildFile", "title": "xlang: Build Current File" },
+      { "command": "xlang.checkFile", "title": "xlang: Check Current File" },
+      { "command": "xlang.testFile", "title": "xlang: Test Current File", "icon": "$(beaker)" },
+      { "command": "xlang.testSuite", "title": "xlang: Run Test Suite" },
+      { "command": "xlang.formatDocument", "title": "xlang: Format Document" },
+      { "command": "xlang.explain", "title": "xlang: Explain Diagnostic Code" },
+      { "command": "xlang.showLayout", "title": "xlang: Show Type Layouts" },
+      { "command": "xlang.showIR", "title": "xlang: Show LLVM IR" },
+      { "command": "xlang.showHIR", "title": "xlang: Show HIR" },
+      { "command": "xlang.showEnvironment", "title": "xlang: Show Compiler, Std and Module Roots" },
+      { "command": "xlang.packageInstall", "title": "xlang: Package Install" },
+      { "command": "xlang.packageUpdate", "title": "xlang: Package Update" },
+      { "command": "xlang.packageRemove", "title": "xlang: Package Remove" },
+      { "command": "xlang.packageList", "title": "xlang: Package List" },
+      { "command": "xlang.packageClean", "title": "xlang: Package Clean" }
     ],
     "menus": {
+      "editor/title/run": [
+        {
+          "command": "xlang.runFile",
+          "when": "resourceLangId == xlang && resourceFilename !~ /\\.test\\.xl$/",
+          "group": "navigation"
+        },
+        {
+          "command": "xlang.testFile",
+          "when": "resourceLangId == xlang && resourceFilename =~ /\\.test\\.xl$/",
+          "group": "navigation"
+        }
+      ],
       "editor/context": [
         {
           "command": "xlang.runFile",
@@ -155,17 +190,28 @@
           "when": "resourceLangId == xlang",
           "group": "navigation"
         }
+      ],
+      "commandPalette": [
+        { "command": "xlang.runFile", "when": "editorLangId == xlang" },
+        { "command": "xlang.buildFile", "when": "editorLangId == xlang" },
+        { "command": "xlang.checkFile", "when": "editorLangId == xlang" },
+        { "command": "xlang.formatDocument", "when": "editorLangId == xlang" },
+        { "command": "xlang.showLayout", "when": "editorLangId == xlang" },
+        { "command": "xlang.showIR", "when": "editorLangId == xlang" },
+        { "command": "xlang.showHIR", "when": "editorLangId == xlang" }
       ]
     }
   },
   "scripts": {
-    "vscode:prepublish": "bun run compile",
     "compile": "bun run scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "watch": "bun --watch run scripts/build.ts",
     "package": "bun run scripts/package.ts"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
-    "bun-types": "^1.2.0"
+    "bun-types": "^1.2.0",
+    "typescript": "^5.6.0"
   }
 }

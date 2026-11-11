@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 import * as vscode from "vscode";
-import { findStdRoot, resolveModuleFile } from "./paths";
 import {
   type AggregateDoc,
   type FunctionScope,
@@ -9,17 +9,22 @@ import {
   memberTypeName,
   moduleIdFromPath,
   parseXlangSource,
-} from "./symbols";
+} from "./parser";
+import { type ModuleContext, moduleContext, resolveModuleFile } from "./paths";
 
 const MAX_REEXPORT_DEPTH = 6;
+
+const VALUE_KINDS = new Set(["global", "const"]);
 
 export class LanguageIndex {
   private readonly moduleCache = new Map<string, ParsedModule>();
   private readonly fileCache = new Map<string, ParsedModule>();
+  private readonly contexts = new Map<string, ModuleContext>();
   private compilerPath: string | undefined;
 
   setCompilerPath(compilerPath: string | undefined): void {
     this.compilerPath = compilerPath;
+    this.contexts.clear();
   }
 
   invalidate(uri?: vscode.Uri): void {
@@ -27,33 +32,38 @@ export class LanguageIndex {
       this.fileCache.delete(uri.fsPath);
     }
     this.moduleCache.clear();
+    this.contexts.clear();
   }
 
-  stdRoot(contextFile: string): string | undefined {
-    return findStdRoot(contextFile, this.compilerPath);
+  /** Module roots (packages and the stdlib) that apply to a file: what `-M` would carry. */
+  context(contextFile: string): ModuleContext {
+    const key = path.dirname(contextFile);
+    let ctx = this.contexts.get(key);
+    if (!ctx) {
+      ctx = moduleContext(contextFile, this.compilerPath);
+      this.contexts.set(key, ctx);
+    }
+    return ctx;
   }
 
   getDocumentModule(document: vscode.TextDocument): ParsedModule {
     const key = document.uri.fsPath;
     const cached = this.fileCache.get(key);
-    if (cached && cached.moduleId.length > 0) {
+    if (cached) {
       return cached;
     }
+    const ctx = this.context(key);
     const parsed = parseXlangSource(
       document.getText(),
       key,
-      moduleIdFromPath(
-        key,
-        this.stdRoot(key),
-        vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
-      )
+      moduleIdFromPath(key, ctx.roots, ctx.projectDir ?? vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath)
     );
     this.fileCache.set(key, parsed);
     return parsed;
   }
 
   getModule(modulePath: string, contextFile: string): ParsedModule | undefined {
-    const file = resolveModuleFile(modulePath, contextFile, this.stdRoot(contextFile));
+    const file = resolveModuleFile(modulePath, contextFile, this.context(contextFile));
     if (!file) {
       return undefined;
     }
@@ -67,7 +77,8 @@ export class LanguageIndex {
     } catch {
       return undefined;
     }
-    const parsed = parseXlangSource(source, file, modulePath);
+    const ctx = this.context(file);
+    const parsed = parseXlangSource(source, file, moduleIdFromPath(file, ctx.roots, ctx.projectDir));
     this.moduleCache.set(file, parsed);
     return parsed;
   }
@@ -86,17 +97,7 @@ export class LanguageIndex {
         continue;
       }
       if (re.kind === "namespace" && re.alias) {
-        out.push({
-          name: re.alias,
-          kind: "module",
-          signature: `export * as ${re.alias} from "${re.modulePath}"`,
-          detail: "namespace",
-          documentation: "",
-          exported: true,
-          moduleId: re.modulePath,
-          filePath: target.filePath,
-          line: 0,
-        });
+        out.push(namespaceSymbol(re.alias, `export * as ${re.alias} from "${re.modulePath}"`, re.modulePath, target.filePath));
         continue;
       }
       const inner = this.exportedSymbols(target, depth + 1, seen);
@@ -109,11 +110,7 @@ export class LanguageIndex {
         }
       } else {
         const except = new Set(re.except ?? []);
-        for (const sym of inner) {
-          if (!except.has(sym.name)) {
-            out.push(sym);
-          }
-        }
+        out.push(...inner.filter((sym) => !except.has(sym.name)));
       }
     }
     return dedupe(out);
@@ -155,17 +152,7 @@ export class LanguageIndex {
       if (imp.kind === "star") {
         out.push(...this.exportedSymbols(mod));
       } else if (imp.kind === "namespace") {
-        out.push({
-          name: imp.alias,
-          kind: "module",
-          signature: `import * as ${imp.alias} from "${imp.modulePath}"`,
-          detail: "namespace",
-          documentation: "",
-          exported: true,
-          moduleId: imp.modulePath,
-          filePath: mod.filePath,
-          line: 0,
-        });
+        out.push(namespaceSymbol(imp.alias, `import "${imp.modulePath}" as ${imp.alias}`, imp.modulePath, mod.filePath));
       } else if (imp.symbolName) {
         const sym = this.exportedSymbols(mod).find((s) => s.name === imp.symbolName);
         if (sym) {
@@ -176,11 +163,9 @@ export class LanguageIndex {
     return dedupe(out);
   }
 
-  /** Members of a namespace alias (`import * as a` or `export * as a`). */
+  /** Members of a namespace alias (`import * as a`, `import "m" as a`, `export * as a`). */
   namespaceMembers(document: vscode.TextDocument, alias: string): SymbolDoc[] | undefined {
-    const imp = this.getDocumentModule(document).imports.find(
-      (i) => i.kind === "namespace" && i.alias === alias
-    );
+    const imp = this.getDocumentModule(document).imports.find((i) => i.kind === "namespace" && i.alias === alias);
     if (!imp) {
       return undefined;
     }
@@ -189,34 +174,26 @@ export class LanguageIndex {
   }
 
   scopeAt(document: vscode.TextDocument, line: number): FunctionScope | undefined {
-    return this.getDocumentModule(document).functions.find(
-      (f) => line >= f.startLine && line <= f.endLine
-    );
+    return this.getDocumentModule(document).functions.find((f) => line >= f.startLine && line <= f.endLine);
   }
 
-  /** Declared type of a name at a line: local (declared above), parameter, `self`. */
+  /** Declared type of a name at a line: local (declared above), parameter, `self`, global. */
   typeOfName(document: vscode.TextDocument, name: string, line: number): string | undefined {
     const scope = this.scopeAt(document, line);
-    if (!scope) {
-      const global = this.getDocumentModule(document).symbols.find(
-        (s) => s.kind === "global" && s.name === name
-      );
-      return global?.returnType;
+    if (scope) {
+      if (name === "self") {
+        return scope.owner;
+      }
+      const local = scope.locals.filter((l) => l.name === name && l.line <= line).at(-1);
+      if (local?.type) {
+        return local.type;
+      }
+      const param = scope.params.find((p) => p.name === name);
+      if (param?.type) {
+        return param.type;
+      }
     }
-    if (name === "self") {
-      return scope.owner;
-    }
-    const locals = scope.locals.filter((l) => l.name === name && l.line <= line);
-    const local = locals[locals.length - 1];
-    if (local?.type) {
-      return local.type;
-    }
-    const param = scope.params.find((p) => p.name === name);
-    if (param?.type) {
-      return param.type;
-    }
-    const global = this.visibleSymbols(document).find((s) => s.kind === "global" && s.name === name);
-    return global?.returnType;
+    return this.visibleSymbols(document).find((s) => VALUE_KINDS.has(s.kind) && s.name === name)?.returnType;
   }
 
   findAggregate(document: vscode.TextDocument, typeName: string): AggregateDoc | undefined {
@@ -247,19 +224,16 @@ export class LanguageIndex {
       visited.add(name);
       const agg = this.findAggregate(document, name);
       for (const mod of mods) {
-        for (const sym of mod.symbols) {
-          if (sym.owner === name && (sym.kind === "field" || sym.kind === "method")) {
-            out.push(sym);
-          }
-        }
+        out.push(...mod.symbols.filter((s) => s.owner === name && (s.kind === "field" || s.kind === "method")));
       }
       if (agg?.kind === "enum") {
         for (const member of agg.members) {
+          const payload = member.payload ? `(${member.payload.join(", ")})` : "";
           out.push({
-            name: member,
+            name: member.name,
             kind: "enumMember",
-            signature: `${agg.name}.${member}`,
-            detail: "enum member",
+            signature: `${agg.name}.${member.name}${payload}${member.value ? ` = ${member.value}` : ""}`,
+            detail: member.payload ? "payload variant" : "enum member",
             documentation: "",
             exported: true,
             owner: agg.name,
@@ -300,9 +274,7 @@ export class LanguageIndex {
       return [];
     }
     for (const part of parts.slice(1)) {
-      const field: SymbolDoc | undefined = this.membersOfType(document, type).find(
-        (m) => m.name === part
-      );
+      const field: SymbolDoc | undefined = this.membersOfType(document, type).find((m) => m.name === part);
       type = field?.kind === "field" ? field.detail : field?.returnType;
       if (!type) {
         return [];
@@ -314,8 +286,7 @@ export class LanguageIndex {
   findSymbol(document: vscode.TextDocument, name: string, line: number): SymbolDoc | undefined {
     const scope = this.scopeAt(document, line);
     if (scope) {
-      const locals = scope.locals.filter((l) => l.name === name && l.line <= line);
-      const local = locals[locals.length - 1];
+      const local = scope.locals.filter((l) => l.name === name && l.line <= line).at(-1);
       const param = scope.params.find((p) => p.name === name);
       const found = local ?? param;
       if (found) {
@@ -349,6 +320,20 @@ export class LanguageIndex {
       ? `Exports: ${names.map((n) => `\`${n}\``).join(", ")}${names.length >= 12 ? ", …" : ""}`
       : `Module \`${modulePath}\``;
   }
+}
+
+function namespaceSymbol(alias: string, signature: string, modulePath: string, filePath: string): SymbolDoc {
+  return {
+    name: alias,
+    kind: "module",
+    signature,
+    detail: "namespace",
+    documentation: "",
+    exported: true,
+    moduleId: modulePath,
+    filePath,
+    line: 0,
+  };
 }
 
 function dedupe(list: SymbolDoc[]): SymbolDoc[] {

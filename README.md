@@ -1,82 +1,140 @@
 # xlang — VS Code Extension
 
-Language support for **xlang** (`.xl`, `*.test.xl`): syntax highlighting, IntelliSense, hover docs,
-go-to-definition, compiler diagnostics, formatting, snippets and run / build / test commands.
+Language support for **xlang** (`.xl`, `*.test.xl`): syntax highlighting, IntelliSense with package-aware
+module resolution, hover docs, go-to-definition, `xlc` diagnostics, formatting, snippets and
+run / build / test / package commands.
 
-Built with **Bun** + TypeScript. It needs the [`xlang`](https://github.com/hasirciogluhq/xlang#readme)
-compiler for diagnostics and the commands.
+Built with **Bun** + TypeScript. It needs the [`xlc`](https://github.com/hasirciogluhq/xlc) compiler for
+diagnostics and the commands, and the [`xl-std`](https://github.com/hasirciogluhq/xl-std) standard library
+sources for `std` IntelliSense and builds. Packages are managed by the `xlang` tool
+(`xlang package ...`); the extension reads what it writes.
+
+## How it talks to the compiler
+
+`xlc` is one command that only compiles. It has no standard library of its own, no package manager and no
+`check` or `run` subcommands. Everything above it is done here, the way the `xlang` tool does it:
+
+```
+xlc main.xl --check \
+    -M github.com/user/repo=<project>/.xlang/cache/github.com/user/repo@v1.2.0 \
+    -M std=<xl-std> --import std -DfeatureDefaultAllocator=true \
+    --diag-format json --context 0
+```
+
+| Task | What the extension runs |
+|------|-------------------------|
+| Diagnostics, *Check Current File* | `xlc <file> --check <module flags> --diag-format json` |
+| *Build Current File* | `xlc <file> -o <file without extension> <module flags>` |
+| *Run Current File* | builds to a temporary executable, then runs it in a terminal |
+| *Test Current File* / *Run Test Suite* | builds and runs every `*.test.xl`; a non-zero status fails the file |
+| *Show Type Layouts / LLVM IR / HIR* | `--dump-layout`, `--emit=ir -o -`, `--dump-hir`, shown in a new editor |
+| *Explain Diagnostic Code* | `xlc --explain <CODE>` |
+
+`<module flags>` are the `-M NAME=DIR` roots of the project, `-M std=<dir> --import std`, the `-D` flags
+from the settings, `--target`, `--safety`, `-O` and `xlang.extraArgs`. A file that sits inside a root is part
+of that root, so that root is left out for it. **xlang: Show Compiler, Std and Module Roots** prints exactly
+what is in use for the active file.
+
+## Module resolution
+
+The same rules as the `xlang` tool (see the packages page of the documentation):
+
+- The project root is the directory of the nearest `xlang.toml`, searched upward from the file.
+- `[dependencies]` entries are repository paths (`github.com/user/repo`) with a tag, `latest` (pinned by
+  `xlang.lock`) or a local `path`. Their sources live in `<root>/.xlang/cache/<repository>@<tag>/`.
+  A package's own `xlang.toml` adds its dependencies; the project's own entries win a conflict.
+- `import "github.com/user/repo"` and `import "github.com/user/repo/sub"` resolve inside the package
+  (`index.xl`, `sub.xl` or `sub/index.xl`); other paths are searched from the importing file's directory,
+  then the project directory.
+- The standard library comes from, in order: the `xlang.stdPath` setting, `[std]` of `xlang.toml`, an `xl-std/`
+  checkout above the file, in the workspace or above the compiler binary, then `~/.xlang/std`.
+- Changes to `xlang.toml`, `xlang.lock` and `.xlang/cache` are picked up at once.
+
+An import of a package that is not installed gets a quick fix: *Install package host/user/repo*.
 
 ## Features
 
 ### Highlighting
 
-Keywords and control flow (`while`, `do`, `for`, `break`, `continue`, `switch`, `defer`, `unsafe`),
-declarations (`fn`, `struct`, `class`, `interface`, `impl`, `enum`, `type`, `define`, `global`,
-`register`), types (`i8`..`i64`, `isize`, `ui8`..`ui64`, `usize`, `f32`, `f64`, `bool`, `void`, `*T`,
-`[T; N]`), attributes (`@repr(c)`, `@library("x")`, ...), `#if` directives, macro calls (`f!(...)`),
-builtins (`syscall`, `sizeOf`, `__builtin_*`, `MemoryOrder`), numbers (hex, binary, octal, floats),
-compound assignment and the other operators.
+Keywords and control flow (`while`, `do`, `for`, `in`, `break`, `continue`, labels, `switch`, `defer`, `try`,
+`catch`, `unsafe`), declarations (`fn`, `struct`, `class`, `interface`, `impl`, `enum`, `type`, `define`,
+`const`, `global`, `register`, `new`, `delete`), types (`i8`..`i64`, `isize`, `u8`..`u64`, `usize`, `f32`,
+`f64`, `bool`, `void`, `str`, `*T`, `[]T`, `[]mut T`, `[T; N]`, tuples), attributes (`@entry`, `@init`, `@fini`,
+`@repr(c)`, `@library("x")`, ...), `#if` directives, macro calls (`f!(...)`), builtins (`syscall`, `sizeOf`,
+`__builtin_*`, `MemoryOrder`), literals (hex, binary, octal, floats, strings, bytes `b'x'`), block and doc
+comments, `:=`, `..` and `..=`.
 
 ### IntelliSense and hover
 
 | Feature | Description |
 |---------|-------------|
-| **Completion** | Keywords, types, builtins, attributes (`@`), directives (`#`), `MemoryOrder.` members, roles, locals, parameters and every name visible through imports |
-| **Member access** | `p.` completes fields and methods (own, inherited, from `impl` blocks), `Color.` enum members, `ns.` namespace members |
-| **Import paths** | Inside `from "..." import`, `import "..."` and `export * from "..."` the stdlib (`std`, `std/mem`, ...) and nearby modules are suggested with their exports |
-| **Hover** | Signatures and `///` doc comments of symbols, docs of keywords and builtins, diagnostic code descriptions (`E0709`) |
-| **Go to definition** | Symbols, members and the module file named by an import string |
+| **Completion** | Keywords, types, builtins, attributes (`@`), directives (`#`), predefined `#if` names and values (`os == "linux"`), roles (`register(panic)`), locals, parameters and every name visible through imports |
+| **Member access** | `p.` completes fields and methods (own, inherited, from `impl` blocks), `Color.` value-enum members, `Expr.` payload variants, `ns.` namespace members |
+| **Import paths** | Inside `from "..." import`, `import "..."` and `export * from "..."`: the standard library, installed packages and nearby modules, with what they export |
+| **Hover** | Signatures (generics included) and `///` doc comments, docs of keywords and builtins, diagnostic code descriptions (`E0709`) |
+| **Go to definition** | Symbols, members and the module file named by an import string, packages included |
+| **Locals** | Types are followed through `local x := v`, `local (q, r) = f()`, `for x, i in s`, `catch e` and `case Expr.Add(a, b)` |
 
-The extension parses `.xl` sources locally (no language server). Standard library modules come from a
-`std/` directory: `xlang.stdPath`, a `std/` above the file, `std/` in a workspace folder, or `std/` next
-to the compiler's build directory.
+The extension parses `.xl` sources locally (no language server); the compiler is the authority and reports
+the real errors.
 
 ### Diagnostics
 
-Runs `xlang check <file> --diag-format json` on open and save (and while typing when
-`xlang.diagnosticsOnType` is on, through a temporary copy next to the file). Errors and warnings keep their
-codes (`E0709`, `W0701`, ...), exact ranges, the pinpoint text, the fix hint and related locations.
+Runs `xlc --check` on open and save (and while typing when `xlang.diagnosticsOnType` is on, through a
+temporary copy next to the file). Errors and warnings keep their codes (`E0709`, `W0701`, ...), exact ranges,
+the pinpoint text, `detail`, `reason`, the `fix` hint, and the labels and notes as related locations.
 Problems found in an imported file are shown on the first line of the importing file.
 
 ### Commands
 
 | Command | Action |
 |---------|--------|
-| **xlang: Run Current File** | `xlang run <file>` in a terminal |
-| **xlang: Build Current File** | `xlang build <file> -o <file without extension>` |
-| **xlang: Check Current File** | `xlang check <file>`, output in the *xlang* channel |
-| **xlang: Test Current File** | `xlang test <file>` (a `*.test.xl` file) or the suite |
-| **xlang: Run Test Suite** | `xlang test <xlang.testRoot>` |
-| **xlang: Explain Diagnostic Code** | `xlang --explain <CODE>` |
+| **xlang: Run Current File** | Build and run the file in a terminal |
+| **xlang: Build Current File** | Build an executable next to the file |
+| **xlang: Check Current File** | `xlc --check`, output in the *xlang* channel |
+| **xlang: Test Current File** | Build and run a `*.test.xl` file (or the suite from another file) |
+| **xlang: Run Test Suite** | Build and run every `*.test.xl` under `xlang.testRoot` |
+| **xlang: Show Type Layouts / Show LLVM IR / Show HIR** | Compiler dumps of the active file |
+| **xlang: Explain Diagnostic Code** | `xlc --explain <CODE>` |
+| **xlang: Show Compiler, Std and Module Roots** | The compiler, std and `-M` roots in use |
+| **xlang: Package Install / Update / Remove / List / Clean** | `xlang package ...` in the project directory |
 | **xlang: Format Document** | Built-in brace based formatter |
 
-`xlang.defines` (`-D`) and `xlang.target` (`--target`) are passed to check, build, run and test.
+The status bar shows the `xlc` version in use; click it for the module roots.
 
 ### Snippets
 
-`fn`, `main`, `struct`, `class`, `interface`, `impl`, `enum`, `define`, `if`, `while`, `do`, `for`,
-`forin`, `switch`, `defer`, `unsafe`, `from`, `importas`, `declare`, `library`, `registerpanic`,
-`#if`, `testfile`, and more: see `snippets/xlang.json`.
+`fn`, `fng`, `main`, `init`, `fini`, `local`, `locali`, `tuple`, `const`, `struct`, `class`, `classdrop`,
+`interface`, `impl`, `enum`, `enump`, `enumg`, `switchp`, `define`, `if`, `while`, `for`, `forin`, `foreach`,
+`switch`, `defer`, `try`, `new`, `delete`, `from`, `importpkg`, `declare`, `library`, `registerpanic`,
+`registeralloc`, `#if`, `testfile`, and more: see `snippets/xlang.json`.
 
 ## Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `xlang.compilerPath` | *(auto)* | Path to the `xlang` binary (auto: `outputs/xlang` in the workspace, then `PATH`) |
-| `xlang.stdPath` | *(auto)* | Directory with the stdlib sources (`index.xl`) for IntelliSense |
-| `xlang.enableDiagnostics` | `true` | Run `xlang check` on open/save |
+| `xlang.compilerPath` | *(auto)* | Path to `xlc` (auto: a build in the workspace or its `xlc/` submodule, `~/.local/bin/xlc`, then `PATH`) |
+| `xlang.cliPath` | *(auto)* | Path to the `xlang` tool used by the package commands (default: `xlang` on `PATH`) |
+| `xlang.stdPath` | *(auto)* | Directory with the stdlib sources (`index.xl`), passed as `-M std=<dir>` |
+| `xlang.noStd` | `false` | No `--import std` |
+| `xlang.features` | `["DefaultAllocator"]` | Standard library features, passed as `-DfeatureNAME=true` |
+| `xlang.enableDiagnostics` | `true` | Run `xlc --check` on open/save |
 | `xlang.diagnosticsOnType` | `false` | Re-check while typing (debounced) |
 | `xlang.defines` | `[]` | Extra `-D NAME[=VALUE]` flags |
 | `xlang.target` | *(host)* | `--target` triple |
+| `xlang.safety` | *(compiler default)* | `--safety checked\|unchecked` |
+| `xlang.optLevel` | *(compiler default)* | `-O0`..`-O3` |
+| `xlang.extraArgs` | `[]` | Further `xlc` arguments for every call |
 | `xlang.formatter.tabSize` | `4` | Indent size of the formatter |
-| `xlang.testRoot` | `test` | What the suite command passes to `xlang test` |
+| `xlang.testRoot` | `test` | Folder searched for `*.test.xl` by the suite command |
 
 ## Development
 
 ```bash
-cd vscode
 bun install
 bun run compile      # -> out/extension.js
+bun run typecheck    # tsc --noEmit
+bun test             # parser, TOML and package resolution tests
 bun run watch        # rebuild on change
 bun run package      # -> xlang-<version>.vsix
 ```
@@ -86,18 +144,24 @@ Press **F5** in VS Code to launch an Extension Development Host.
 ### Layout
 
 ```
-vscode/
 ├── src/
-│   ├── extension.ts      # activation, commands
-│   ├── completions.ts    # CompletionItemProvider
-│   ├── hover.ts          # Hover + Definition providers
-│   ├── symbols.ts        # line based .xl declaration parser
-│   ├── languageIndex.ts  # import resolution, members, scopes
-│   ├── builtins.ts       # keyword / type / builtin / attribute catalog
-│   ├── paths.ts          # module and stdlib resolution
-│   ├── diagnostics.ts    # `xlang check` integration
+│   ├── extension.ts       # activation, commands, watchers, status bar, quick fixes
+│   ├── compiler.ts        # xlc discovery, flag building (-M, --import, -D, ...), process helper
+│   ├── runner.ts          # terminal that builds and runs programs and tests
+│   ├── diagnostics.ts     # `xlc --check --diag-format json` integration
+│   ├── project.ts         # xlang.toml / xlang.lock / .xlang/cache resolution (no VS Code API)
+│   ├── toml.ts            # reader of the TOML subset (no VS Code API)
+│   ├── paths.ts           # std root, module roots, import resolution and path listing
+│   ├── parser.ts          # line based .xl declaration parser (no VS Code API)
+│   ├── symbols.ts         # hover / completion presentation of symbols
+│   ├── languageIndex.ts   # import resolution, members, scopes
+│   ├── completions.ts     # CompletionItemProvider
+│   ├── hover.ts           # Hover + Definition providers
+│   ├── builtins.ts        # keyword / type / builtin / attribute / role catalog
+│   ├── diagnosticCodes.ts # titles of the compiler's diagnostic codes
 │   └── formatter.ts
-├── syntaxes/             # TextMate grammar
+├── test/                  # bun tests of the pure modules
+├── syntaxes/              # TextMate grammar
 ├── snippets/
 └── language-configuration.json
 ```
@@ -116,8 +180,8 @@ fn classify(c: Color) -> i32 {
     }
 }
 
-fn main() -> i32 {
-    local total: i32 = 0
+@entry fn main() -> i32 {
+    local total := 0
     for i in 0..4 {
         defer total += 1
         if i == 2 { continue }

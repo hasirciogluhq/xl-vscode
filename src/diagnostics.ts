@@ -1,10 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execFile } from "node:child_process";
 import * as vscode from "vscode";
-import { findStdRoot } from "./paths";
+import { buildArgs, resolveCompilerPath, runProcess } from "./compiler";
 
-const DIAGNOSTIC_SOURCE = "xlang";
+const DIAGNOSTIC_SOURCE = "xlc";
 
 interface JsonLabel {
   file: string;
@@ -15,25 +14,31 @@ interface JsonLabel {
   text?: string;
 }
 
+interface JsonNote {
+  file: string;
+  line: number;
+  column: number;
+  message: string;
+}
+
+/** One line of `xlc --diag-format json`. */
 interface JsonDiagnostic {
   code?: string;
   severity?: string;
   suppressed?: boolean;
   message: string;
   labels?: JsonLabel[];
+  notes?: JsonNote[];
   detail?: string;
   reason?: string;
   fix?: string;
 }
 
 export class XlangDiagnostics {
-  private readonly collection: vscode.DiagnosticCollection;
   private readonly pending = new Map<string, NodeJS.Timeout>();
   private readonly running = new Map<string, number>();
 
-  constructor(collection: vscode.DiagnosticCollection) {
-    this.collection = collection;
-  }
+  constructor(private readonly collection: vscode.DiagnosticCollection) {}
 
   dispose(): void {
     for (const timer of this.pending.values()) {
@@ -45,15 +50,14 @@ export class XlangDiagnostics {
 
   schedule(document: vscode.TextDocument, delayMs = 400): void {
     const key = document.uri.toString();
-    const existing = this.pending.get(key);
-    if (existing) {
-      clearTimeout(existing);
-    }
-    const timer = setTimeout(() => {
-      this.pending.delete(key);
-      void this.refresh(document, true);
-    }, delayMs);
-    this.pending.set(key, timer);
+    clearTimeout(this.pending.get(key));
+    this.pending.set(
+      key,
+      setTimeout(() => {
+        this.pending.delete(key);
+        void this.refresh(document, true);
+      }, delayMs)
+    );
   }
 
   clear(document: vscode.TextDocument): void {
@@ -61,8 +65,8 @@ export class XlangDiagnostics {
   }
 
   /**
-   * Runs `xlang check` and publishes the result. With `fromBuffer` the unsaved editor text is
-   * checked through a temporary sibling file, so relative imports keep working.
+   * Runs `xlc <file> --check` and publishes the result. With `fromBuffer` the unsaved editor text is
+   * checked through a temporary sibling file, so relative imports and the project keep working.
    */
   async refresh(document: vscode.TextDocument, fromBuffer = false): Promise<void> {
     const config = vscode.workspace.getConfiguration("xlang");
@@ -89,23 +93,17 @@ export class XlangDiagnostics {
       }
     }
 
-    let output: string;
+    let output = "";
     try {
-      const result = await runProcess(
-        compilerPath,
-        ["check", target, ...compilerFlags(), ...stdFlags(filePath, compilerPath), "--diag-format", "json", "--context", "0"],
-        path.dirname(filePath)
-      );
-      output = result.text;
+      const { args } = buildArgs(filePath, compilerPath);
+      output = (
+        await runProcess(compilerPath, [target, "--check", ...args, "--diag-format", "json", "--context", "0"], path.dirname(filePath))
+      ).text;
     } catch {
-      output = "";
+      // compiler missing: the status bar item says so, the editor stays quiet
     } finally {
       if (temp) {
-        try {
-          fs.unlinkSync(temp);
-        } catch {
-          // best effort
-        }
+        fs.rmSync(temp, { force: true });
       }
     }
 
@@ -116,14 +114,20 @@ export class XlangDiagnostics {
   }
 }
 
-function toDiagnostics(
-  output: string,
-  document: vscode.TextDocument,
-  checkedFile: string
-): vscode.Diagnostic[] {
+const SEVERITY: Record<string, vscode.DiagnosticSeverity> = {
+  warning: vscode.DiagnosticSeverity.Warning,
+  error: vscode.DiagnosticSeverity.Error,
+};
+
+function toDiagnostics(output: string, document: vscode.TextDocument, checkedFile: string): vscode.Diagnostic[] {
   const own: vscode.Diagnostic[] = [];
   const foreign: vscode.Diagnostic[] = [];
   const sameFile = (file: string) => path.normalize(file) === path.normalize(checkedFile);
+  const location = (file: string, line: number, column: number) =>
+    new vscode.Location(
+      sameFile(file) ? document.uri : vscode.Uri.file(file),
+      new vscode.Position(Math.max(0, line - 1), Math.max(0, column - 1))
+    );
 
   for (const line of output.split("\n")) {
     const text = line.trim();
@@ -140,63 +144,41 @@ function toDiagnostics(
       continue;
     }
 
-    const severity =
-      d.severity === "warning"
-        ? vscode.DiagnosticSeverity.Warning
-        : d.severity === "note"
-          ? vscode.DiagnosticSeverity.Information
-          : vscode.DiagnosticSeverity.Error;
-
     const labels = d.labels ?? [];
     const primary = labels.find((l) => sameFile(l.file)) ?? labels[0];
-    const parts = [d.message];
-    if (primary?.text) {
-      parts.push(primary.text);
-    }
-    if (d.detail) {
-      parts.push(d.detail);
-    }
-    if (d.fix) {
-      parts.push(`fix: ${d.fix}`);
-    }
-    const message = parts.join("\n");
+    const message = [
+      d.message,
+      primary?.text,
+      d.detail,
+      d.reason && `reason: ${d.reason}`,
+      d.fix && `fix: ${d.fix}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-    if (primary && sameFile(primary.file)) {
-      const diag = new vscode.Diagnostic(rangeOf(primary, document), message, severity);
-      diag.source = DIAGNOSTIC_SOURCE;
-      if (d.code) {
-        diag.code = d.code;
-      }
-      const related = labels
-        .filter((l) => l !== primary)
-        .map(
-          (l) =>
-            new vscode.DiagnosticRelatedInformation(
-              new vscode.Location(
-                sameFile(l.file) ? document.uri : vscode.Uri.file(l.file),
-                new vscode.Position(Math.max(0, l.line - 1), Math.max(0, l.column - 1))
-              ),
-              l.text ?? "related location"
-            )
-        );
-      if (related.length > 0) {
-        diag.relatedInformation = related;
-      }
-      own.push(diag);
-    } else {
-      // The error is in another file (an import): surface it on the first line.
-      const where = primary ? `${path.basename(primary.file)}:${primary.line}:${primary.column}` : "";
-      const diag = new vscode.Diagnostic(
-        new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
-        where ? `${where}: ${message}` : message,
-        severity
-      );
-      diag.source = DIAGNOSTIC_SOURCE;
-      if (d.code) {
-        diag.code = d.code;
-      }
-      foreign.push(diag);
+    const related = [
+      ...labels.filter((l) => l !== primary).map((l) => new vscode.DiagnosticRelatedInformation(location(l.file, l.line, l.column), l.text ?? "related location")),
+      ...(d.notes ?? [])
+        .filter((n) => n.file)
+        .map((n) => new vscode.DiagnosticRelatedInformation(location(n.file, n.line, n.column), n.message)),
+    ];
+
+    const inThisFile = primary && sameFile(primary.file);
+    // The error is in another file (an import): surface it on the first line.
+    const where = primary && !inThisFile ? `${path.basename(primary.file)}:${primary.line}:${primary.column}: ` : "";
+    const diag = new vscode.Diagnostic(
+      inThisFile ? rangeOf(primary, document) : new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
+      where + message,
+      SEVERITY[d.severity ?? "error"] ?? vscode.DiagnosticSeverity.Error
+    );
+    diag.source = DIAGNOSTIC_SOURCE;
+    if (d.code) {
+      diag.code = d.code;
     }
+    if (related.length > 0) {
+      diag.relatedInformation = related;
+    }
+    (inThisFile ? own : foreign).push(diag);
   }
   return [...own, ...foreign];
 }
@@ -211,119 +193,4 @@ function rangeOf(label: JsonLabel, document: vscode.TextDocument): vscode.Range 
     endChar = Math.max(startChar + 1, document.lineAt(startLine).text.length);
   }
   return new vscode.Range(startLine, startChar, endLine, endChar);
-}
-
-/** `-D`, `--target` from the extension settings; shared by check / build / run / test. */
-export function compilerFlags(): string[] {
-  const config = vscode.workspace.getConfiguration("xlang");
-  const flags: string[] = [];
-  for (const define of config.get<string[]>("defines", [])) {
-    if (define.trim()) {
-      flags.push("-D", define.trim());
-    }
-  }
-  const target = config.get<string>("target", "").trim();
-  if (target) {
-    flags.push("--target", target);
-  }
-  return flags;
-}
-
-/**
- * A file inside the stdlib sources is checked with `--no-std`: otherwise the compiler loads its
- * embedded copy of that same module next to the file being checked and reports every `export(c)`
- * symbol as defined twice (E0401).
- */
-export function stdFlags(filePath: string, compilerPath: string): string[] {
-  const stdRoot = findStdRoot(filePath, compilerPath);
-  if (!stdRoot) {
-    return [];
-  }
-  const rel = path.relative(stdRoot, path.normalize(filePath));
-  return rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? ["--no-std"] : [];
-}
-
-export async function resolveCompilerPath(): Promise<string> {
-  const config = vscode.workspace.getConfiguration("xlang");
-  const configured = config.get<string>("compilerPath", "").trim();
-  if (configured) {
-    return configured;
-  }
-
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    for (const base of [folder.uri.fsPath, path.join(folder.uri.fsPath, "..")]) {
-      const found = findBuiltXlang(base);
-      if (found) {
-        return found;
-      }
-    }
-  }
-  return "xlang";
-}
-
-/** Prefer outputs/xlang; fall back to xmake's outputs/<plat>/<arch>/<mode>/xlang. */
-function findBuiltXlang(root: string): string | undefined {
-  const exe = process.platform === "win32" ? "xlang.exe" : "xlang";
-  const direct = path.normalize(path.join(root, "outputs", exe));
-  if (fs.existsSync(direct)) {
-    return direct;
-  }
-
-  const buildDir = path.join(root, "outputs");
-  if (!fs.existsSync(buildDir)) {
-    return undefined;
-  }
-  try {
-    for (const plat of fs.readdirSync(buildDir, { withFileTypes: true })) {
-      if (!plat.isDirectory() || plat.name.startsWith(".")) {
-        continue;
-      }
-      const platDir = path.join(buildDir, plat.name);
-      for (const arch of fs.readdirSync(platDir, { withFileTypes: true })) {
-        if (!arch.isDirectory()) {
-          continue;
-        }
-        for (const mode of ["release", "debug"]) {
-          const candidate = path.normalize(path.join(platDir, arch.name, mode, exe));
-          if (fs.existsSync(candidate)) {
-            return candidate;
-          }
-        }
-      }
-    }
-  } catch {
-    return undefined;
-  }
-  return undefined;
-}
-
-export interface ProcessResult {
-  /** stdout followed by stderr. */
-  text: string;
-  /** Exit status; `null` when the process was killed (timeout). */
-  code: number | null;
-}
-
-/** Runs a process; resolves with its output and exit status whatever that status is. */
-export function runProcess(
-  command: string,
-  args: string[],
-  cwd: string,
-  timeoutMs = 60_000
-): Promise<ProcessResult> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      command,
-      args,
-      { cwd, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error && (error as NodeJS.ErrnoException).code === "ENOENT") {
-          reject(new Error(`xlang compiler not found: ${command}. Build it or set xlang.compilerPath.`));
-          return;
-        }
-        const code = error ? (typeof error.code === "number" ? error.code : null) : 0;
-        resolve({ text: `${stdout.toString()}\n${stderr.toString()}`, code });
-      }
-    );
-  });
 }

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
-import { DIAGNOSTIC_CODES, catalogToHover, findCatalogEntry } from "./builtins";
+import { catalogToHover, findCatalogEntry } from "./builtins";
+import { DIAGNOSTIC_CODES } from "./diagnosticCodes";
 import { getLanguageIndex } from "./languageIndex";
 import { symbolToHover } from "./symbols";
 
@@ -15,9 +16,11 @@ export function registerHover(context: vscode.ExtensionContext): void {
         const codeRange = document.getWordRangeAtPosition(position, CODE);
         if (codeRange) {
           const code = document.getText(codeRange);
-          const text = DIAGNOSTIC_CODES[code];
-          if (text) {
-            const md = new vscode.MarkdownString(`**${code}** ${text}\n\nRun \`xlang --explain ${code}\` for the long form.`);
+          const info = DIAGNOSTIC_CODES[code];
+          if (info) {
+            const md = new vscode.MarkdownString(
+              `**${code}** (${info.severity}) ${info.title}\n\nRun \`xlc --explain ${code}\` for the long form, or use the command *xlang: Explain Diagnostic Code*.`
+            );
             return new vscode.Hover(md, codeRange);
           }
         }
