@@ -1,0 +1,171 @@
+{
+  "name": "xlang",
+  "displayName": "xlang",
+  "description": "Syntax highlighting, IntelliSense, snippets, compiler diagnostics, formatting and run/build/test commands for the xlang programming language",
+  "version": "1.0.0",
+  "publisher": "xlang",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hasirciogluhq/xlang.git"
+  },
+  "homepage": "https://github.com/hasirciogluhq/xlang#readme",
+  "bugs": {
+    "url": "https://github.com/hasirciogluhq/xlang/issues"
+  },
+  "packageManager": "bun@1.3.14",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Formatters"
+  ],
+  "keywords": [
+    "xlang",
+    "intellisense",
+    "completion",
+    "hover"
+  ],
+  "activationEvents": [
+    "onLanguage:xlang"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "xlang",
+        "aliases": [
+          "xlang",
+          "Xlang"
+        ],
+        "extensions": [
+          ".xl"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/xlang-light.svg",
+          "dark": "./icons/xlang-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "xlang",
+        "scopeName": "source.xlang",
+        "path": "./syntaxes/xlang.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "xlang",
+        "path": "./snippets/xlang.json"
+      }
+    ],
+    "configuration": {
+      "title": "xlang",
+      "properties": {
+        "xlang.compilerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the xlang compiler binary (outputs/xlang). Empty = auto-detect (workspace outputs/, then PATH)."
+        },
+        "xlang.stdPath": {
+          "type": "string",
+          "default": "",
+          "description": "Directory of the standard library sources (the one holding index.xl) used for IntelliSense. Empty = auto-detect (std/ in the workspace or next to the compiler)."
+        },
+        "xlang.enableDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run `xlang check` on open/save and show its errors and warnings."
+        },
+        "xlang.diagnosticsOnType": {
+          "type": "boolean",
+          "default": false,
+          "description": "Re-run diagnostics while typing (debounced). The buffer is checked through a temporary copy next to the file."
+        },
+        "xlang.defines": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra -D NAME or NAME=VALUE flags passed to the compiler for diagnostics, run and build."
+        },
+        "xlang.target": {
+          "type": "string",
+          "default": "",
+          "description": "Value of --target passed to the compiler for diagnostics and build (empty = host)."
+        },
+        "xlang.formatter.tabSize": {
+          "type": "number",
+          "default": 4,
+          "minimum": 2,
+          "maximum": 8,
+          "description": "Indent size for the xlang formatter."
+        },
+        "xlang.testRoot": {
+          "type": "string",
+          "default": "test",
+          "description": "Directory (or pattern) given to `xlang test` for the suite command, relative to the workspace root."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "xlang.runFile",
+        "title": "xlang: Run Current File",
+        "icon": "$(play)"
+      },
+      {
+        "command": "xlang.buildFile",
+        "title": "xlang: Build Current File"
+      },
+      {
+        "command": "xlang.testFile",
+        "title": "xlang: Test Current File",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "xlang.testSuite",
+        "title": "xlang: Run Test Suite"
+      },
+      {
+        "command": "xlang.formatDocument",
+        "title": "xlang: Format Document"
+      },
+      {
+        "command": "xlang.checkFile",
+        "title": "xlang: Check Current File"
+      },
+      {
+        "command": "xlang.explain",
+        "title": "xlang: Explain Diagnostic Code"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "xlang.runFile",
+          "when": "resourceLangId == xlang && resourceFilename !~ /\\.test\\.xl$/",
+          "group": "navigation"
+        },
+        {
+          "command": "xlang.testFile",
+          "when": "resourceLangId == xlang",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "bun run compile",
+    "compile": "bun run scripts/build.ts",
+    "watch": "bun --watch run scripts/build.ts",
+    "package": "bun run scripts/package.ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "bun-types": "^1.2.0"
+  }
+}

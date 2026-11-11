@@ -1,0 +1,368 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "xlang",
+  "scopeName": "source.xlang",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#directives" },
+    { "include": "#attributes" },
+    { "include": "#declarations" },
+    { "include": "#macro-calls" },
+    { "include": "#builtins" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#numbers" },
+    { "include": "#function-calls" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.documentation.xlang",
+          "match": "///.*$"
+        },
+        {
+          "name": "comment.line.double-slash.xlang",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.xlang",
+      "begin": "\"",
+      "end": "\"|$",
+      "patterns": [
+        {
+          "name": "constant.character.escape.xlang",
+          "match": "\\\\(x[0-9A-Fa-f]{2}|[nrt0\\\\\"'])"
+        },
+        {
+          "name": "invalid.illegal.escape.xlang",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "name": "meta.preprocessor.xlang",
+          "match": "^\\s*(#(?:if|elif|else|endif|ifdef|ifndef|error))\\b(.*)$",
+          "captures": {
+            "1": { "name": "keyword.control.directive.xlang" },
+            "2": {
+              "patterns": [
+                { "include": "#strings" },
+                { "include": "#constants" },
+                { "include": "#numbers" },
+                { "include": "#operators" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "name": "meta.attribute.xlang",
+          "match": "(@)(file|repr|packed|layout|align|mangle|allow|library|[A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "punctuation.definition.attribute.xlang" },
+            "2": { "name": "entity.other.attribute-name.xlang" }
+          }
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "meta.function.xlang",
+          "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.function.xlang" },
+            "2": { "name": "entity.name.function.xlang" }
+          }
+        },
+        {
+          "name": "meta.struct.xlang",
+          "match": "\\b(struct)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.struct.xlang" },
+            "2": { "name": "entity.name.type.struct.xlang" }
+          }
+        },
+        {
+          "name": "meta.class.xlang",
+          "match": "\\b(class)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_./]*))?",
+          "captures": {
+            "1": { "name": "storage.type.class.xlang" },
+            "2": { "name": "entity.name.type.class.xlang" },
+            "3": { "name": "punctuation.separator.inheritance.xlang" },
+            "4": { "name": "entity.other.inherited-class.xlang" }
+          }
+        },
+        {
+          "name": "meta.interface.xlang",
+          "match": "\\b(interface)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.interface.xlang" },
+            "2": { "name": "entity.name.type.interface.xlang" }
+          }
+        },
+        {
+          "name": "meta.impl.xlang",
+          "match": "\\b(impl)\\s+([A-Za-z_][A-Za-z0-9_./]*)\\s+(for)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.impl.xlang" },
+            "2": { "name": "entity.name.type.interface.xlang" },
+            "3": { "name": "keyword.other.for.xlang" },
+            "4": { "name": "entity.name.type.xlang" }
+          }
+        },
+        {
+          "name": "meta.enum.xlang",
+          "match": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.enum.xlang" },
+            "2": { "name": "entity.name.type.enum.xlang" }
+          }
+        },
+        {
+          "name": "meta.type-alias.xlang",
+          "match": "\\b(type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.alias.xlang" },
+            "2": { "name": "entity.name.type.alias.xlang" }
+          }
+        },
+        {
+          "name": "meta.define.xlang",
+          "match": "\\b(define)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.define.xlang" },
+            "2": { "name": "entity.name.function.preprocessor.xlang" }
+          }
+        },
+        {
+          "name": "meta.global.xlang",
+          "match": "\\b(global)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.global.xlang" },
+            "2": { "name": "variable.other.global.xlang" }
+          }
+        },
+        {
+          "name": "meta.local.xlang",
+          "match": "\\b(local)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.local.xlang" },
+            "2": { "name": "variable.other.local.xlang" }
+          }
+        },
+        {
+          "name": "meta.register.xlang",
+          "match": "\\b(register)(?:\\s*(\\()\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(\\)))?",
+          "captures": {
+            "1": { "name": "storage.modifier.register.xlang" },
+            "2": { "name": "punctuation.definition.role.begin.xlang" },
+            "3": { "name": "entity.name.role.xlang" },
+            "4": { "name": "punctuation.definition.role.end.xlang" }
+          }
+        },
+        {
+          "name": "meta.export-c.xlang",
+          "match": "\\b(export)\\s*(\\()\\s*(c)\\s*(\\))",
+          "captures": {
+            "1": { "name": "storage.modifier.export.xlang" },
+            "2": { "name": "punctuation.definition.role.begin.xlang" },
+            "3": { "name": "entity.name.role.xlang" },
+            "4": { "name": "punctuation.definition.role.end.xlang" }
+          }
+        },
+        {
+          "name": "meta.import-from.xlang",
+          "match": "\\b(from)\\s+(\"[^\"]*\")\\s+(import)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.import.xlang" },
+            "2": { "name": "string.quoted.double.module.xlang" },
+            "3": { "name": "keyword.control.import.xlang" }
+          }
+        },
+        {
+          "name": "meta.import.xlang",
+          "match": "\\b(import)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.import.xlang" }
+          }
+        }
+      ]
+    },
+    "macro-calls": {
+      "patterns": [
+        {
+          "name": "meta.macro-call.xlang",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(!)(?=\\s*\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.macro.xlang" },
+            "2": { "name": "punctuation.definition.macro.xlang" }
+          }
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.xlang",
+          "match": "\\b(syscall|sizeOf|alignOf|offsetOf|staticAssert|__builtin_atomicLoad|__builtin_atomicStore|__builtin_atomicXchg|__builtin_atomicCas|__builtin_atomicAdd|__builtin_fence|__builtin_asm)\\b(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.asm-operand.xlang",
+          "match": "\\b(in|out|inout|clobber|options)\\b(?=\\s*\\()"
+        },
+        {
+          "name": "support.type.enum.builtin.xlang",
+          "match": "\\bMemoryOrder\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "meta.for-range.xlang",
+          "match": "\\b(for)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(in)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.flow.xlang" },
+            "2": { "name": "variable.other.local.xlang" },
+            "3": { "name": "keyword.control.range.xlang" }
+          }
+        },
+        {
+          "name": "keyword.control.flow.xlang",
+          "match": "\\b(if|else|while|do|for|break|continue|return|switch|case|default|defer)\\b"
+        },
+        {
+          "name": "keyword.other.unsafe.xlang",
+          "match": "\\bunsafe\\b"
+        },
+        {
+          "name": "storage.modifier.xlang",
+          "match": "\\b(export|declare|virtual|override|except)\\b"
+        },
+        {
+          "name": "keyword.other.new.xlang",
+          "match": "\\bnew\\b"
+        },
+        {
+          "name": "variable.language.self.xlang",
+          "match": "\\bself\\b"
+        },
+        {
+          "name": "keyword.operator.cast.xlang",
+          "match": "\\bas\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.primitive.xlang",
+          "match": "\\b(i8|i16|i32|i64|isize|ui8|ui16|ui32|ui64|usize|f32|f64|bool|void)\\b"
+        },
+        {
+          "name": "entity.name.type.xlang",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.xlang",
+          "match": "\\b(true|false|nil)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.xlang",
+          "match": "\\b0[xX][0-9A-Fa-f_]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.xlang",
+          "match": "\\b0[bB][01_]+\\b"
+        },
+        {
+          "name": "constant.numeric.octal.xlang",
+          "match": "\\b0[oO][0-7_]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.xlang",
+          "match": "\\b\\d[\\d_]*\\.\\d[\\d_]*(?:[eE][+-]?\\d+)?\\b|\\b\\d[\\d_]*[eE][+-]?\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.xlang",
+          "match": "\\b\\d[\\d_]*\\b"
+        }
+      ]
+    },
+    "function-calls": {
+      "patterns": [
+        {
+          "name": "meta.function-call.xlang",
+          "match": "\\b([a-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.call.xlang" }
+          }
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.compound.xlang",
+          "match": "(\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<=|>>=)"
+        },
+        {
+          "name": "keyword.operator.increment-decrement.xlang",
+          "match": "(\\+\\+|--)"
+        },
+        {
+          "name": "keyword.operator.arrow.xlang",
+          "match": "->"
+        },
+        {
+          "name": "keyword.operator.range.xlang",
+          "match": "\\.\\."
+        },
+        {
+          "name": "keyword.operator.logical.xlang",
+          "match": "(&&|\\|\\||!(?!=))"
+        },
+        {
+          "name": "keyword.operator.comparison.xlang",
+          "match": "(==|!=|<=|>=|<(?!<)|>(?!>))"
+        },
+        {
+          "name": "keyword.operator.bitwise.xlang",
+          "match": "(<<|>>|&|\\||\\^|~)"
+        },
+        {
+          "name": "keyword.operator.ternary.xlang",
+          "match": "[?]"
+        },
+        {
+          "name": "keyword.operator.assignment.xlang",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.arithmetic.xlang",
+          "match": "(\\+|-|\\*|/|%)"
+        }
+      ]
+    }
+  }
+}
