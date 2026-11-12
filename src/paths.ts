@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { type ModuleRoot, findManifestDir, loadProject } from "./project";
+import { type ResolvedEnvironment, environmentOf } from "./environment";
+import type { ModuleRoot } from "./project";
 
 export const SOURCE_EXT = ".xl";
 export const TEST_SUFFIX = ".test.xl";
@@ -46,37 +46,35 @@ function* ancestors(start: string, limit = 12): Generator<string> {
   }
 }
 
+const settings = () => vscode.workspace.getConfiguration("xlang");
+
+/** The xl tool: the `xlang.cliPath` setting, else `xl` on `PATH`. */
+export const resolveCliPath = (): string => settings().get<string>("cliPath", "").trim() || "xl";
+
 /**
- * The standard library sources: `xlc` has none built in, the xlang tool passes `-M std=<dir>`.
- * First match wins: the `xlang.stdPath` setting, `[std]` of the project's `xlang.toml`, an `xl-std/`
- * checkout above the file, in a workspace folder or above the compiler binary, then `~/.xlang/std`.
+ * The build environment of `filePath` (environment.ts): `xl env --json`, or the same computation in the extension when xl is
+ * missing or `xlang.useXlEnv` is off. The `xlang.stdPath` setting goes in as `--std=<dir>`, the strongest stdlib override.
  */
-export function findStdRoot(filePath?: string, compilerPath?: string): string | undefined {
-  const configured = vscode.workspace.getConfiguration("xlang").get<string>("stdPath", "").trim();
-  if (configured && isStdRoot(configured)) {
-    return path.normalize(configured);
-  }
+export function environmentFor(filePath: string): ResolvedEnvironment {
+  return environmentOf(filePath, {
+    cli: settings().get<boolean>("useXlEnv", true) ? resolveCliPath() : "",
+    std: settings().get<string>("stdPath", "").trim(),
+  });
+}
 
-  if (filePath) {
-    const std = loadProject(filePath)?.stdRoot;
-    if (std && isStdRoot(std)) {
-      return std;
-    }
-  }
-
-  const bases: string[] = [];
-  if (filePath) {
-    bases.push(...ancestors(path.dirname(filePath)));
-  }
+/**
+ * An `xl-std/` checkout above the file, in a workspace folder or above the compiler binary: the stdlib when no toolchain names one
+ * (working on the compiler or the stdlib itself without `xl lc install`).
+ */
+function findStdCheckout(filePath: string, compilerPath?: string): string | undefined {
+  const bases = [...ancestors(path.dirname(filePath))];
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     bases.push(folder.uri.fsPath);
   }
   if (compilerPath && path.isAbsolute(compilerPath)) {
     bases.push(...ancestors(path.dirname(compilerPath), 6));
   }
-  const candidates = bases.map((base) => path.join(base, STD_DIR));
-  candidates.push(path.join(os.homedir(), ".xlang", "std"));
-  return candidates.map(path.normalize).find(isStdRoot);
+  return bases.map((base) => path.normalize(path.join(base, STD_DIR))).find(isStdRoot);
 }
 
 export interface ModuleContext {
@@ -87,23 +85,19 @@ export interface ModuleContext {
   projectDir?: string;
   /** Repository paths the manifest needs but `.xlang/cache` lacks. */
   missing: string[];
+  environment: ResolvedEnvironment;
 }
 
-/** What `-M` would carry for `filePath`: the project's packages plus the standard library. */
+/** What `-M` carries for `filePath`: the environment's packages plus the standard library. */
 export function moduleContext(filePath: string, compilerPath?: string): ModuleContext {
-  const project = loadProject(filePath);
-  const stdRoot = findStdRoot(filePath, compilerPath);
-  const roots = [...(project?.roots ?? [])];
+  const environment = environmentFor(filePath);
+  const stdRoot = environment.std && isStdRoot(environment.std) ? path.normalize(environment.std) : findStdCheckout(filePath, compilerPath);
+  const roots = [...environment.modules];
   if (stdRoot) {
     roots.push({ name: "std", dir: stdRoot });
   }
   roots.sort((a, b) => b.name.length - a.name.length);
-  return {
-    roots,
-    stdRoot,
-    projectDir: project?.manifest.dir ?? findManifestDir(path.dirname(filePath)),
-    missing: project?.missing ?? [],
-  };
+  return { roots, stdRoot, projectDir: environment.project || undefined, missing: environment.missing, environment };
 }
 
 /** The root an import specifier names: equal to a root name, or continuing it with `/`. */

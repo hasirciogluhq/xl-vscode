@@ -75,7 +75,7 @@ export class XlangDiagnostics {
       return;
     }
 
-    const compilerPath = await resolveCompilerPath();
+    const compilerPath = await resolveCompilerPath(document.uri.fsPath);
     const key = document.uri.toString();
     const ticket = (this.running.get(key) ?? 0) + 1;
     this.running.set(key, ticket);

@@ -4,15 +4,16 @@ Language support for **xlang** (`.xl`, `*.test.xl`): syntax highlighting, Intell
 module resolution, hover docs, go-to-definition, `xlc` diagnostics, formatting, snippets and
 run / build / test / package commands.
 
-Built with **Bun** + TypeScript. It needs the [`xlc`](https://github.com/hasirciogluhq/xlc) compiler for
-diagnostics and the commands, and the [`xl-std`](https://github.com/hasirciogluhq/xl-std) standard library
-sources for `std` IntelliSense and builds. Packages are managed by the `xlang` tool
-(`xl install|update|remove|list|clean`); the extension reads what it writes.
+Built with **Bun** + TypeScript. It works best with the [`xl`](https://github.com/hasirciogluhq/xlang) tool
+installed: `xl lc install` puts the [`xlc`](https://github.com/hasirciogluhq/xlc) compiler and the
+[`xl-std`](https://github.com/hasirciogluhq/xl-std) standard library under `~/.xlang`, `xl pkg ...` manages
+packages, and `xl env --json <file>` tells the extension which compiler, stdlib, package roots and flags a file
+builds with.
 
 ## How it talks to the compiler
 
 `xlc` is one command that only compiles. It has no standard library of its own, no package manager and no
-`check` or `run` subcommands. Everything above it is done here, the way the `xlang` tool does it:
+`check` or `run` subcommands. Everything above it is done here, with the arguments `xl env` reports:
 
 ```
 xlc main.xl --check \
@@ -30,25 +31,43 @@ xlc main.xl --check \
 | *Show Type Layouts / LLVM IR / HIR* | `--dump-layout`, `--emit=ir -o -`, `--dump-hir`, shown in a new editor |
 | *Explain Diagnostic Code* | `xlc --explain <CODE>` |
 
-`<module flags>` are the `-M NAME=DIR` roots of the project, `-M std=<dir> --import std`, the `-D` flags
-from the settings, `--target`, `--safety`, `-O` and `xlang.extraArgs`. A file that sits inside a root is part
-of that root, so that root is left out for it. **xlang: Show Compiler, Std and Module Roots** prints exactly
-what is in use for the active file.
+`<module flags>` are `-M std=<dir> --import std -DfeatureDefaultAllocator=true`, the `-M NAME=DIR` package
+roots, the `[build] flags` of `xlang.local.toml`, then the `-D` flags from the settings, `--target`, `--safety`,
+`-O` and `xlang.extraArgs`. A file that sits inside a root is part of that root, so that root is left out for it.
+**xlang: Show Compiler, Std and Module Roots** prints exactly what is in use for the active file and where it
+came from (`xl env` or the extension's own reading).
 
 ## Module resolution
 
-The same rules as the `xlang` tool (see the packages page of the documentation):
+The extension runs `xl env --json <file>` (setting `xlang.useXlEnv`, on by default) and caches the answer per
+project until one of the files below changes. Without `xl` it computes the same result itself. Each layer
+replaces what it names, lowest first:
 
-- The project root is the directory of the nearest `xlang.toml`, searched upward from the file.
-- `[dependencies]` entries are repository paths (`github.com/user/repo`) with a tag, `latest` (pinned by
-  `xlang.lock`) or a local `path`. Their sources live in `<root>/.xlang/cache/<repository>@<tag>/`.
-  A package's own `xlang.toml` adds its dependencies; the project's own entries win a conflict.
-- `import "github.com/user/repo"` and `import "github.com/user/repo/sub"` resolve inside the package
-  (`index.xl`, `sub.xl` or `sub/index.xl`); other paths are searched from the importing file's directory,
-  then the project directory.
-- The standard library comes from, in order: the `xlang.stdPath` setting, `[std]` of `xlang.toml`, an `xl-std/`
-  checkout above the file, in the workspace or above the compiler binary, then `~/.xlang/std`.
-- Changes to `xlang.toml`, `xlang.lock` and `.xlang/cache` are picked up at once.
+1. **The active toolchain**: `$XLANG_HOME/toolchain.toml` (`~/.xlang` by default), written by `xl lc install`,
+   `xl lc update` and `xl lc use`. It names the compiler `$XLANG_HOME/xlc/<tag>/xlc` and the stdlib
+   `$XLANG_HOME/std/<tag>`.
+2. **`xlang.toml`**, the nearest one above the file: every `path` dependency maps to its directory, and every
+   `xlang.lock` entry to `<project>/.xlang/cache/<repository>@<tag>/`. A package that is not on disk is reported.
+3. **`xlang.local.toml`** next to it, a per-checkout file that is not committed:
+
+   ```toml
+   [toolchain]
+   xlc = "../xlc/build/macosx/arm64/release/xlc"   # a compiler build
+   std = "../xl-std"                               # a stdlib checkout
+
+   [modules]
+   "github.com/user/repo" = "../repo"              # work on a package next to the project
+
+   [build]
+   flags = ["-DdebugLog=true"]
+   ```
+4. **`$XLC` and `$XLANG_STD`**.
+5. **The `xlang.stdPath` setting** (passed to `xl env` as `--std`) and `xlang.compilerPath`.
+
+`import "github.com/user/repo"` and `import "github.com/user/repo/sub"` resolve inside the package (`index.xl`,
+`sub.xl` or `sub/index.xl`); other paths are searched from the importing file's directory, then the project
+directory. Changes to `xlang.toml`, `xlang.lock`, `xlang.local.toml`, `.xlang/cache` and `toolchain.toml` are
+picked up at once.
 
 An import of a package that is not installed gets a quick fix: *Install package host/user/repo*.
 
@@ -57,12 +76,13 @@ An import of a package that is not installed gets a quick fix: *Install package 
 ### Highlighting
 
 Keywords and control flow (`while`, `do`, `for`, `in`, `break`, `continue`, labels, `switch`, `defer`, `try`,
-`catch`, `unsafe`), declarations (`fn`, `struct`, `class`, `interface`, `impl`, `enum`, `type`, `define`,
-`const`, `global`, `register`, `new`, `delete`), types (`i8`..`i64`, `isize`, `u8`..`u64`, `usize`, `f32`,
-`f64`, `bool`, `void`, `str`, `*T`, `[]T`, `[]mut T`, `[T; N]`, tuples), attributes (`@entry`, `@init`, `@fini`,
-`@repr(c)`, `@library("x")`, ...), `#if` directives, macro calls (`f!(...)`), builtins (`syscall`, `sizeOf`,
-`__builtin_*`, `MemoryOrder`), literals (hex, binary, octal, floats, strings, bytes `b'x'`), block and doc
-comments, `:=`, `..` and `..=`.
+``catch`, `unsafe`), declarations (`fn`, `struct`, `class`, `interface`, `impl` for an interface and inherent
+`impl<T> Type<T>`, `enum`, `type`, `define`, `const`, `global`, `register`, `new`, `delete`), operator functions
+(`fn +`, `fn []=`, `fn ()`), closures (`|x| x * 2`, `move |x| { }`), the `?` operator, types (`i8`..`i64`,
+`isize`, `u8`..`u64`, `usize`, `f32`, `f64`, `bool`, `void`, `str`, `*T`, `[]T`, `[]mut T`, `[T; N]`, tuples),
+attributes (`@entry`, `@init`, `@fini`, `@repr(c)`, `@library("x")`, ...), `#if` directives, macro calls
+(`f!(...)`), builtins (`syscall`, `sizeOf`, `__builtin_*`, `MemoryOrder`), literals (hex, binary, floats,
+strings, bytes `b'x'`), block and doc comments, `:=`, `..` and `..=`.
 
 ### IntelliSense and hover
 
@@ -97,7 +117,8 @@ Problems found in an imported file are shown on the first line of the importing 
 | **xlang: Show Type Layouts / Show LLVM IR / Show HIR** | Compiler dumps of the active file |
 | **xlang: Explain Diagnostic Code** | `xlc --explain <CODE>` |
 | **xlang: Show Compiler, Std and Module Roots** | The compiler, std and `-M` roots in use |
-| **xlang: Package Install / Update / Remove / List / Clean** | `xl install|update|remove|list|clean` in the project directory |
+| **xlang: Package Add / Install / Update / Remove / List / Clean** | `xl pkg add\|install\|update\|remove\|list\|clean` in the project directory |
+| **xlang: Toolchain Install / Update** | `xl lc install\|update`: the per-user compiler and stdlib |
 | **xlang: Format Document** | Built-in brace based formatter |
 
 The status bar shows the `xlc` version in use; click it for the module roots.
@@ -105,7 +126,7 @@ The status bar shows the `xlc` version in use; click it for the module roots.
 ### Snippets
 
 `fn`, `fng`, `main`, `init`, `fini`, `local`, `locali`, `tuple`, `const`, `struct`, `class`, `classdrop`,
-`interface`, `impl`, `enum`, `enump`, `enumg`, `switchp`, `define`, `if`, `while`, `for`, `forin`, `foreach`,
+`interface`, `impl`, `impltype`, `fnop`, `closure`, `move`, `enum`, `enump`, `enumg`, `switchp`, `define`, `if`, `while`, `for`, `forin`, `foreach`,
 `switch`, `defer`, `try`, `new`, `delete`, `from`, `importpkg`, `declare`, `library`, `registerpanic`,
 `registeralloc`, `#if`, `testfile`, and more: see `snippets/xlang.json`.
 
@@ -113,11 +134,11 @@ The status bar shows the `xlc` version in use; click it for the module roots.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `xlang.compilerPath` | *(auto)* | Path to `xlc` (auto: a build in the workspace or its `xlc/` submodule, `~/.local/bin/xlc`, then `PATH`) |
-| `xlang.cliPath` | *(auto)* | Path to the `xlang` tool used by the package commands (default: `xlang` on `PATH`) |
-| `xlang.stdPath` | *(auto)* | Directory with the stdlib sources (`index.xl`), passed as `-M std=<dir>` |
-| `xlang.noStd` | `false` | No `--import std` |
-| `xlang.features` | `["DefaultAllocator"]` | Standard library features, passed as `-DfeatureNAME=true` |
+| `xlang.compilerPath` | *(auto)* | Path to `xlc` (auto: the one `xl env` names, a build in the workspace or its `xlc/` submodule, `~/.local/bin/xlc`, then `PATH`) |
+| `xlang.cliPath` | *(auto)* | Path to `xl`, used for `xl env`, `xl pkg` and `xl lc` (default: `xl` on `PATH`) |
+| `xlang.useXlEnv` | `true` | Ask `xl env --json` for the build environment; off = the extension reads the files itself |
+| `xlang.stdPath` | *(auto)* | Directory with the stdlib sources (`index.xl`); the strongest stdlib override (`xl env --std`) |
+| `xlang.noStd` | `false` | No `-M std`, `--import std` or `-DfeatureDefaultAllocator=true` |
 | `xlang.enableDiagnostics` | `true` | Run `xlc --check` on open/save |
 | `xlang.diagnosticsOnType` | `false` | Re-check while typing (debounced) |
 | `xlang.defines` | `[]` | Extra `-D NAME[=VALUE]` flags |
@@ -149,7 +170,8 @@ Press **F5** in VS Code to launch an Extension Development Host.
 │   ├── compiler.ts        # xlc discovery, flag building (-M, --import, -D, ...), process helper
 │   ├── runner.ts          # terminal that builds and runs programs and tests
 │   ├── diagnostics.ts     # `xlc --check --diag-format json` integration
-│   ├── project.ts         # xlang.toml / xlang.lock / .xlang/cache resolution (no VS Code API)
+│   ├── project.ts         # the build environment as xl env computes it: toolchain.toml, xlang.toml, xlang.lock, xlang.local.toml (no VS Code API)
+│   ├── environment.ts     # asks xl env --json, falls back to project.ts, caches per project (no VS Code API)
 │   ├── toml.ts            # reader of the TOML subset (no VS Code API)
 │   ├── paths.ts           # std root, module roots, import resolution and path listing
 │   ├── parser.ts          # line based .xl declaration parser (no VS Code API)

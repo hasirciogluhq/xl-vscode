@@ -19,7 +19,7 @@ const kw = (label: string, documentation: string, insertText?: string): CatalogE
 });
 
 export const KEYWORDS: CatalogEntry[] = [
-  kw("fn", "Declares a function: `fn name(a: i32) -> i32 { }`. Without `->` the return type is `void`. `fn(A) -> R` is also the function-pointer type, and `fn(x: i32) { }` in an expression is a function literal. `fn out = io.print` declares an alias."),
+  kw("fn", "Declares a function: `fn name(a: i32) -> i32 { }`. Without `->` the return type is `void`. `fn(A) -> R` is also the function-pointer type, and `fn(x: i32) { }` in an expression is a function literal. `fn out = io.print` declares an alias. `fn +(self, o: T) -> T`, `fn ==(...)`, `fn [](...)`, `fn []=(...)` and `fn ()(...)` overload operators. A closure is `|a: i32| a + 1` or `|x| { ... }`; `e?` returns the failure of a `Result`/`Option`-shaped enum early."),
   kw("local", "Declares a local: `local x: i32 = 0`, `local x = 0`, `local x := 0` (type inferred), or a tuple taken apart: `local (q, r) = divMod(7, 3)`."),
   kw("global", "Declares a global. The initializer must be a compile-time constant; without one the value is zero."),
   kw("const", "A named compile-time constant that cannot be written: `const LIMIT: i32 = 7`, `const GREETING = \"hi\"`. Allowed at module level and as a statement in a block. Emitted as read-only data."),
@@ -48,7 +48,8 @@ export const KEYWORDS: CatalogEntry[] = [
   kw("struct", "Declares a struct: plain data, no methods. A field that needs drop is `E0721`. `@repr(c)` selects C layout."),
   kw("class", "Declares a class: methods, single inheritance (`class Dog : Animal`), a vptr, `virtual`/`override`, `fn init(self, ...)` and `fn drop(self)`."),
   kw("interface", "Declares an interface; values are fat pointers `{data, table}` that borrow their object. Implemented explicitly with `impl`."),
-  kw("impl", "`impl Interface for Type { ... }` implements an interface (nominal). Generic: `impl<T> Iter<T> for Cell<T>`."),
+  kw("impl", "`impl Interface for Type { ... }` implements an interface (nominal); generic: `impl<T> Iter<T> for Cell<T>`. `impl<T> Vec<T> { fn retain<F>(self: *Vec<T>, keep: F) { } }` adds methods to a type, generic ones included."),
+  kw("move", "`move |x| ...` is a closure that captures by value (it owns copies of what it uses; a capture that needs drop is `E0774`). Without `move`, `|x| ...` captures by reference. A closure with captures is passed through a generic parameter (`fn each<F>(f: F)`), not a `fn(A) -> R` pointer (`E0773`)."),
   kw("enum", "`enum Name: T { A, B = 5 }` names constants; `enum Expr { Num(i64) Add(*Expr, *Expr) Nil }` is a payload enum (a tagged union); both may be generic: `enum Result<T, E> { Ok(T) Err(E) }`."),
   kw("type", "Transparent type alias: `type Name = T`, generic: `type Pair<T> = (T, T)`."),
   kw("define", "Compile-time constant (`define N = 4`) or hygienic macro (`define f(x: expr) { }`, called as `f!(...)`). Macro parameter kinds: `expr`, `type`, `ident`, `block`, `items`."),
@@ -173,7 +174,7 @@ export const PREDEFINED: { name: string; documentation: string; values?: string[
   { name: "endian", documentation: "Byte order (string).", values: ["little", "big"] },
   { name: "debug", documentation: "`true` with `-g` (bool)." },
   { name: "optLevel", documentation: "The `-O` level, 0 to 3 (integer)." },
-  { name: "featureDefaultAllocator", documentation: "Standard library feature: the default `alloc` / `free` registrations. Set with `-DfeatureDefaultAllocator=true` (the extension's `xlang.features` setting does this)." },
+  { name: "featureDefaultAllocator", documentation: "Standard library feature: the default `alloc` / `free` registrations. Set with `-DfeatureDefaultAllocator=true` (the extension passes it unless `xlang.noStd` is on)." },
 ];
 
 const POOLS: CatalogEntry[] = [...KEYWORDS, ...TYPES, ...BUILTINS, ...MEMORY_ORDERS, ...ATTRIBUTES, ...ROLES];

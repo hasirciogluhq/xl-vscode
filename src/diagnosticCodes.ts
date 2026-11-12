@@ -80,6 +80,21 @@ export const DIAGNOSTIC_CODES: Record<string, CodeInfo> = {
   E0758: e("payload enum needs drop in a place that cannot own it"),
   E0759: e("array of a payload enum that needs drop"),
   E0760: e("stack object returned as an interface"),
+  E0761: e("`?` in a place that cannot run it first"),
+  E0762: e("`?` on a value that is not a success-or-failure enum"),
+  E0763: e("`?` cannot return its failure from this function"),
+  E0770: e("closure parameter type unknown"),
+  E0771: e("closure parameter count does not match"),
+  E0773: e("closure with captures where a function pointer is expected"),
+  E0774: e("`move` closure captures a value that needs drop"),
+  E0775: e("type cannot be iterated"),
+  E0776: e("`iter` does not return an iterator"),
+  E0777: e("`next` cannot end a loop"),
+  // Reported by the xl tool, not by xlc.
+  E0790: e("no usable compiler or stdlib (run `xl lc install`)"),
+  E0791: e("release download failed"),
+  E0792: e("release asset does not match checksums.txt"),
+  E0793: e("release asset cannot be unpacked or installed"),
   W0201: w("layout of a declared type is unknown, C layout assumed"),
   W0202: w("declared layout contradicts the recorded layout"),
   W0203: w("layout record uses a different layout scheme"),
@@ -88,7 +103,9 @@ export const DIAGNOSTIC_CODES: Record<string, CodeInfo> = {
   W0402: w("local name shadows a registered global"),
   W0601: w("implicit signed integer to float conversion"),
   W0701: w("missing return"),
+  W0770: w("`next` takes `self` by value"),
+  W0771: w("`for` uses `iter`, not `next`"),
 };
 
-/** Codes that mean a package is missing: the editor offers `xl install` for them. */
+/** Codes that mean a package is missing: the editor offers `xl pkg install` for them. */
 export const PACKAGE_CODES = new Set(["E0741", "E0745"]);

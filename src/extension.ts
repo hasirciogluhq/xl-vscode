@@ -3,13 +3,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { registerCompletions } from "./completions";
-import { buildArgs, resolveCliPath, resolveCompilerPath, runProcess } from "./compiler";
+import { buildArgs, resolveCompilerPath, runProcess } from "./compiler";
 import { XlangDiagnostics } from "./diagnostics";
+import { resetEnvironmentCache } from "./environment";
 import { formatXlangDocument } from "./formatter";
 import { registerDefinitions, registerHover } from "./hover";
 import { getLanguageIndex, resetLanguageIndex } from "./languageIndex";
-import { SOURCE_EXT, TEST_SUFFIX } from "./paths";
-import { MANIFEST_NAME, resetProjectCache } from "./project";
+import { SOURCE_EXT, TEST_SUFFIX, resolveCliPath } from "./paths";
+import { LOCAL_NAME, MANIFEST_NAME } from "./project";
 import { type Job, runJobs } from "./runner";
 
 let diagnostics: XlangDiagnostics | undefined;
@@ -35,9 +36,9 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   void refreshCompiler();
 
-  /** The project layout changed (manifest, lock, package cache): forget it and check again. */
+  /** The build environment changed (manifest, lock, local overrides, package cache, toolchain): forget it and check again. */
   const projectChanged = () => {
-    resetProjectCache();
+    resetEnvironmentCache();
     resetLanguageIndex();
     void refreshCompiler();
     xlangDocuments().forEach((doc) => void diagnostics?.refresh(doc));
@@ -49,9 +50,13 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   };
 
-  const watcher = vscode.workspace.createFileSystemWatcher("**/{xlang.toml,xlang.lock}");
+  const watcher = vscode.workspace.createFileSystemWatcher(`**/{${MANIFEST_NAME},xlang.lock,${LOCAL_NAME}}`);
   const cacheWatcher = vscode.workspace.createFileSystemWatcher("**/.xlang/cache/*");
-  for (const w of [watcher, cacheWatcher]) {
+  // `xl lc install|use` switches the active toolchain.
+  const toolchainWatcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(vscode.Uri.file(process.env.XLANG_HOME || path.join(os.homedir(), ".xlang")), "toolchain.toml")
+  );
+  for (const w of [watcher, cacheWatcher, toolchainWatcher]) {
     w.onDidChange(projectChanged);
     w.onDidCreate(projectChanged);
     w.onDidDelete(projectChanged);
@@ -65,7 +70,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (path.basename(doc.uri.fsPath) === MANIFEST_NAME) {
+      if ([MANIFEST_NAME, LOCAL_NAME].includes(path.basename(doc.uri.fsPath))) {
         projectChanged();
         return;
       }
@@ -130,11 +135,14 @@ export function activate(context: vscode.ExtensionContext): void {
     "xlang.showIR": () => showCompilerOutput(["--emit=ir", "-o", "-"], "ir", "llvm"),
     "xlang.showHIR": () => showCompilerOutput(["--dump-hir"], "hir"),
     "xlang.showEnvironment": showEnvironment,
+    "xlang.packageAdd": packageAdd,
     "xlang.packageInstall": (spec?: string) => packageInstall(spec),
     "xlang.packageUpdate": () => packageCommand(["update"]),
     "xlang.packageRemove": packageRemove,
     "xlang.packageList": () => packageCommand(["list"]),
     "xlang.packageClean": () => packageCommand(["clean"]),
+    "xlang.toolchainInstall": () => toolchainCommand(["install"]),
+    "xlang.toolchainUpdate": () => toolchainCommand(["update"]),
   };
   for (const [id, handler] of Object.entries(commands)) {
     context.subscriptions.push(vscode.commands.registerCommand(id, handler));
@@ -165,23 +173,30 @@ async function updateStatus(compiler: string): Promise<void> {
     return;
   }
   status.text = version ? `$(zap) xlc ${version}` : "$(warning) xlc not found";
-  status.tooltip = version ? `${compiler}\nClick for the module roots in use.` : "Build xlc or set xlang.compilerPath.";
+  status.tooltip = version
+    ? `${compiler}\nClick for the build environment in use.`
+    : "Run `xl lc install` (xlang: Install Toolchain), or set xlang.compilerPath.";
   status.backgroundColor = version ? undefined : new vscode.ThemeColor("statusBarItem.warningBackground");
 }
 
 async function showEnvironment(): Promise<void> {
-  const compiler = await resolveCompilerPath();
-  const file = vscode.window.activeTextEditor?.document.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
+  const file = vscode.window.activeTextEditor?.document.uri.fsPath;
+  const compiler = await resolveCompilerPath(file);
   const lines = [`compiler:  ${compiler} (${(await compilerVersion(compiler)) ?? "not found"})`, `cli:       ${resolveCliPath()}`];
-  if (file) {
+  if (file && path.isAbsolute(file)) {
     const { args, context } = buildArgs(file, compiler);
+    const env = context.environment;
+    const tag = (t: string) => (t ? ` (${t})` : "");
     lines.push(
+      `source:    ${env.source === "xl" ? "xl env --json" : "computed by the extension (xl not found or failed)"}`,
       `file:      ${file}`,
       `project:   ${context.projectDir ?? "(no xlang.toml above the file)"}`,
-      `std:       ${context.stdRoot ?? "(not found: set xlang.stdPath or check out xl-std)"}`,
+      `std:       ${context.stdRoot ? context.stdRoot + tag(env.stdTag) : "(none: run `xl lc install`, or set xlang.stdPath)"}`,
       "module roots (-M):",
       ...(context.roots.length ? context.roots.map((r) => `  ${r.name} = ${r.dir}`) : ["  (none)"]),
-      ...(context.missing.length ? [`missing (run xl install): ${context.missing.join(", ")}`] : []),
+      ...(env.flags.length ? [`local flags: ${env.flags.join(" ")}`] : []),
+      ...(context.missing.length ? [`missing (run xl pkg install): ${context.missing.join(", ")}`] : []),
+      ...(env.problem ? [`problem:   ${env.problem}`] : []),
       `xlc flags: ${args.join(" ")}`
     );
   }
@@ -229,7 +244,7 @@ async function runCurrentFile(): Promise<void> {
     void vscode.window.showWarningMessage("A *.test.xl file is a test: use xlang: Test Current File.");
     return;
   }
-  runJobs("xl run", [buildAndRunJob(await resolveCompilerPath(), file, path.basename(file), 0)]);
+  runJobs("xl run", [buildAndRunJob(await resolveCompilerPath(file), file, path.basename(file), 0)]);
 }
 
 async function buildCurrentFile(): Promise<void> {
@@ -237,7 +252,7 @@ async function buildCurrentFile(): Promise<void> {
   if (!file) {
     return;
   }
-  const compiler = await resolveCompilerPath();
+  const compiler = await resolveCompilerPath(file);
   const out = path.join(path.dirname(file), path.basename(file, SOURCE_EXT) + EXE);
   await runInChannel(compiler, [file, ...buildArgs(file, compiler).args, "-o", out], path.dirname(file), `Built ${path.basename(out)}`);
 }
@@ -247,7 +262,7 @@ async function checkCurrentFile(): Promise<void> {
   if (!file) {
     return;
   }
-  const compiler = await resolveCompilerPath();
+  const compiler = await resolveCompilerPath(file);
   await runInChannel(compiler, [file, "--check", ...buildArgs(file, compiler).args], path.dirname(file), "No problems found");
 }
 
@@ -274,7 +289,7 @@ async function showCompilerOutput(extra: string[], what: string, language = "pla
   if (!file) {
     return;
   }
-  const compiler = await resolveCompilerPath();
+  const compiler = await resolveCompilerPath(file);
   try {
     const result = await runProcess(compiler, [file, ...buildArgs(file, compiler).args, ...extra], path.dirname(file), 120_000);
     if (result.code !== 0) {
@@ -325,7 +340,7 @@ async function runTests(files: string[]): Promise<void> {
     void vscode.window.showWarningMessage(`No ${TEST_SUFFIX} files found.`);
     return;
   }
-  const compiler = await resolveCompilerPath();
+  const compiler = await resolveCompilerPath(files[0]);
   const base = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
   runJobs(
     "xl test",
@@ -353,7 +368,7 @@ async function testSuite(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Packages: the xlang tool downloads them; the editor only starts it where the manifest is.
+// Packages and the toolchain: the xl tool downloads them (`xl pkg`, `xl lc`); the editor only starts it where the manifest is.
 
 function projectDirectory(): string | undefined {
   const file = vscode.window.activeTextEditor?.document.uri.fsPath;
@@ -372,21 +387,38 @@ function projectDirectory(): string | undefined {
   }
 }
 
+/** `xl pkg <args>` in the project directory. */
 function packageCommand(args: string[]): void {
   const cwd = projectDirectory();
   if (!cwd) {
     void vscode.window.showWarningMessage("Open a folder first.");
     return;
   }
-  runJobs("xl package", [{ title: `package ${args[0]}`, commands: [{ command: resolveCliPath(), args, cwd }] }], projectChangedSoon);
+  runJobs("xl pkg", [{ title: `xl pkg ${args.join(" ")}`, commands: [{ command: resolveCliPath(), args: ["pkg", ...args], cwd }] }], projectChangedSoon);
 }
 
-/** Reloads the project after a package command finished (the watchers also catch most changes). */
+/** `xl lc <args>`: installs or updates the per-user compiler and stdlib. */
+function toolchainCommand(args: string[]): void {
+  const cwd = projectDirectory() ?? os.homedir();
+  runJobs("xl lc", [{ title: `xl lc ${args.join(" ")}`, commands: [{ command: resolveCliPath(), args: ["lc", ...args], cwd }] }], projectChangedSoon);
+}
+
+/** Reloads the environment after an xl command finished (the watchers also catch most changes). */
 function projectChangedSoon(): void {
-  resetProjectCache();
+  resetEnvironmentCache();
   resetLanguageIndex();
   void resolveCompilerPath().then((compiler) => getLanguageIndex().setCompilerPath(compiler));
   xlangDocuments().forEach((doc) => void diagnostics?.refresh(doc));
+}
+
+async function packageAdd(): Promise<void> {
+  const target = await vscode.window.showInputBox({
+    prompt: "Repository to add to xlang.toml without downloading it (host/user/repo or host/user/repo@v1.2.0)",
+    placeHolder: "github.com/user/repo",
+  });
+  if (target?.trim()) {
+    packageCommand(["add", target.trim()]);
+  }
 }
 
 async function packageInstall(spec?: string): Promise<void> {

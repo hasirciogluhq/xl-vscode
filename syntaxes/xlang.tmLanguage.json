@@ -113,6 +113,14 @@
     "declarations": {
       "patterns": [
         {
+          "name": "meta.function.operator.xlang",
+          "match": "\\b(fn)\\s*(\\[\\]=?|\\(\\)|<<=|>>=|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|\\+\\+|--|==|!=|<=|>=|<<|>>|[-+*/%&|^<>!~])(?=\\s*[(<])",
+          "captures": {
+            "1": { "name": "storage.type.function.xlang" },
+            "2": { "name": "entity.name.function.operator.xlang" }
+          }
+        },
+        {
           "name": "meta.function.xlang",
           "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
@@ -155,12 +163,22 @@
         },
         {
           "name": "meta.impl.xlang",
-          "match": "\\b(impl)\\s+([A-Za-z_][A-Za-z0-9_./]*)\\s+(for)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(impl)\\s*(<[^>{]*>)?\\s*([A-Za-z_][A-Za-z0-9_./]*)(?:\\s*<[^{]*?>)?\\s+(for)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "storage.type.impl.xlang" },
-            "2": { "name": "entity.name.type.interface.xlang" },
-            "3": { "name": "keyword.other.for.xlang" },
-            "4": { "name": "entity.name.type.xlang" }
+            "2": { "patterns": [{ "include": "#types" }] },
+            "3": { "name": "entity.name.type.interface.xlang" },
+            "4": { "name": "keyword.other.for.xlang" },
+            "5": { "name": "entity.name.type.xlang" }
+          }
+        },
+        {
+          "name": "meta.impl.inherent.xlang",
+          "match": "\\b(impl)\\s*(<[^>{]*>)?\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.impl.xlang" },
+            "2": { "patterns": [{ "include": "#types" }] },
+            "3": { "name": "entity.name.type.xlang" }
           }
         },
         {
@@ -319,6 +337,22 @@
           "match": "\\b(if|else|while|do|for|in|break|continue|return|switch|case|default|defer|try|catch)\\b"
         },
         {
+          "comment": "A closure: `move |x| ...`, or `|a: i32, b| ...` / `|| ...` where an expression starts (after `(`, `,`, `=` or `return`).",
+          "name": "meta.closure.xlang",
+          "match": "(?:\\b(move)|(?<=[(,=])|(?<=\\breturn))\\s*(\\|)([^|]*)(\\|)",
+          "captures": {
+            "1": { "name": "storage.modifier.move.xlang" },
+            "2": { "name": "punctuation.definition.parameters.begin.closure.xlang" },
+            "3": {
+              "patterns": [
+                { "include": "#types" },
+                { "match": "\\b[a-z_][A-Za-z0-9_]*\\b", "name": "variable.parameter.closure.xlang" }
+              ]
+            },
+            "4": { "name": "punctuation.definition.parameters.end.closure.xlang" }
+          }
+        },
+        {
           "name": "keyword.other.unsafe.xlang",
           "match": "\\bunsafe\\b"
         },
@@ -369,10 +403,6 @@
         {
           "name": "constant.numeric.binary.xlang",
           "match": "\\b0[bB][01_]+\\b"
-        },
-        {
-          "name": "constant.numeric.octal.xlang",
-          "match": "\\b0[oO][0-7_]+\\b"
         },
         {
           "name": "constant.numeric.float.xlang",
@@ -428,6 +458,11 @@
         {
           "name": "keyword.operator.bitwise.xlang",
           "match": "(<<|>>|&|\\||\\^|~)"
+        },
+        {
+          "comment": "`e?` propagates a failure when the `?` is followed by a closing token, a member access or a binary operator; any other `?` is the ternary.",
+          "name": "keyword.operator.try.xlang",
+          "match": "(?<=[\\w)\\]])\\?(?=\\s*(?:$|[).;,}\\]]|\\.[A-Za-z_]|[-+*/%]|==|!=|<|>|&&|\\|\\|))"
         },
         {
           "name": "keyword.operator.ternary.xlang",

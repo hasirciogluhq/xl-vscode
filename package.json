@@ -72,28 +72,27 @@
         "xlang.compilerPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the xlc compiler binary. Empty = auto-detect: a build in the workspace (build/<plat>/<arch>/release/xlc, also inside an xlc/ submodule), ~/.local/bin/xlc, then xlc on PATH."
+          "description": "Path to the xlc compiler binary. Empty = the xlc chosen by xl env (xlang.local.toml, then the toolchain of xl lc install), a build in the workspace (build/<plat>/<arch>/release/xlc, also inside an xlc/ submodule), ~/.local/bin/xlc, then xlc on PATH."
         },
         "xlang.cliPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the xl tool that runs the package commands (xl install|update|remove|list|clean). Empty = xl on PATH."
+          "description": "Path to the xl tool used for xl env --json, the package commands (xl pkg ...) and the toolchain commands (xl lc ...). Empty = xl on PATH."
+        },
+        "xlang.useXlEnv": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask xl env --json for the compiler, standard library, package roots and flags of a file. When xl is missing the extension reads the same files itself (toolchain.toml, xlang.toml, xlang.lock, xlang.local.toml)."
         },
         "xlang.stdPath": {
           "type": "string",
           "default": "",
-          "description": "Directory of the standard library sources (the one holding index.xl), passed to xlc as -M std=<dir> and used for IntelliSense. Empty = [std] of xlang.toml, then an xl-std/ checkout above the file, in the workspace or above the compiler, then ~/.xlang/std."
+          "description": "Directory of the standard library sources (the one holding index.xl), passed to xl env as --std and to xlc as -M std=<dir>. It wins over xlang.local.toml, $XLANG_STD and the installed toolchain. Empty = that resolution, then an xl-std/ checkout above the file, in the workspace or above the compiler."
         },
         "xlang.noStd": {
           "type": "boolean",
           "default": false,
-          "description": "Do not load the standard library: xlc gets no -M std=<dir> and no --import std."
-        },
-        "xlang.features": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": ["DefaultAllocator"],
-          "description": "Standard library features, passed as -DfeatureNAME=true (DefaultAllocator becomes -DfeatureDefaultAllocator=true)."
+          "description": "Do not load the standard library: xlc gets no -M std=<dir>, no --import std and no -DfeatureDefaultAllocator=true."
         },
         "xlang.enableDiagnostics": {
           "type": "boolean",
@@ -160,11 +159,14 @@
       { "command": "xlang.showIR", "title": "xlang: Show LLVM IR" },
       { "command": "xlang.showHIR", "title": "xlang: Show HIR" },
       { "command": "xlang.showEnvironment", "title": "xlang: Show Compiler, Std and Module Roots" },
-      { "command": "xlang.packageInstall", "title": "xlang: Package Install" },
-      { "command": "xlang.packageUpdate", "title": "xlang: Package Update" },
-      { "command": "xlang.packageRemove", "title": "xlang: Package Remove" },
-      { "command": "xlang.packageList", "title": "xlang: Package List" },
-      { "command": "xlang.packageClean", "title": "xlang: Package Clean" }
+      { "command": "xlang.packageAdd", "title": "xlang: Package Add (xl pkg add)" },
+      { "command": "xlang.packageInstall", "title": "xlang: Package Install (xl pkg install)" },
+      { "command": "xlang.packageUpdate", "title": "xlang: Package Update (xl pkg update)" },
+      { "command": "xlang.packageRemove", "title": "xlang: Package Remove (xl pkg remove)" },
+      { "command": "xlang.packageList", "title": "xlang: Package List (xl pkg list)" },
+      { "command": "xlang.packageClean", "title": "xlang: Package Clean (xl pkg clean)" },
+      { "command": "xlang.toolchainInstall", "title": "xlang: Toolchain Install (xl lc install)" },
+      { "command": "xlang.toolchainUpdate", "title": "xlang: Toolchain Update (xl lc update)" }
     ],
     "menus": {
       "editor/title/run": [
